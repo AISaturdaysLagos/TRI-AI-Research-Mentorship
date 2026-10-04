@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+    function userExists() {
+      return signedIn() && exists(userPath());
+    }
+    function role() {
+      return get(userPath()).data.role;
+    }
+    function isAdmin() {
+      return userExists() && role() == 'admin';
+    }
+    function isReviewer() {
+      return userExists() && (role() == 'reviewer' || role() == 'admin');
+    }
+    function self(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read: if self(uid) || isAdmin();
+      allow create: if self(uid)
+        && request.resource.data.role in ['researcher', 'senior_researcher']
+        && request.resource.data.email == request.auth.token.email;
+      allow update: if isAdmin()
+        || (self(uid) && request.resource.data.role == resource.data.role);
+      allow delete: if isAdmin();
+    }
+
+    match /researcherProfiles/{uid} {
+      allow read: if self(uid) || isAdmin() || isReviewer();
+      allow create, update: if self(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /seniorResearcherProfiles/{uid} {
+      allow read: if self(uid) || isAdmin();
+      allow create, update: if self(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /proposals/{id} {
+      allow read: if isAdmin() || isReviewer()
+        || (signedIn() && resource.data.ownerId == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.status in ['draft', 'received', 'research_scoping'];
+      allow update: if isAdmin()
+        || isReviewer()
+        || (signedIn()
+          && resource.data.ownerId == request.auth.uid
+          && resource.data.status in ['draft', 'revise', 'research_scoping']
+          && request.resource.data.ownerId == resource.data.ownerId);
+      allow delete: if isAdmin();
+    }
+
+    match /projects/{id} {
+      allow read: if resource.data.publicShowcase == true
+        || isAdmin()
+        || (signedIn() && request.auth.uid in resource.data.participantIds);
+      allow write: if isAdmin();
+    }
+
+    match /reviews/{id} {
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.reviewerId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn() && resource.data.reviewerId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /matches/{id} {
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.mentorId == request.auth.uid)
+        || (signedIn() && resource.data.researcherId == request.auth.uid);
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (signedIn()
+          && resource.data.mentorId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['response', 'responseNote', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+
+    match /awards/{token} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

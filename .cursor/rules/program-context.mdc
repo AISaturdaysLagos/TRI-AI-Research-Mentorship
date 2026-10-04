@@ -1,0 +1,34 @@
+---
+description: TRI AI research mentorship context from the Google Drive program folder
+alwaysApply: true
+---
+
+# Program context
+
+The source of truth is the Google Drive folder **TRI AI Researcher & Senior Researcher Program Details** (`1c0IFV_DkJQMpUPJ38o5sYLEAG28Qiw0n`). Before changing program design, forms, communications, matching, or operations, read the relevant file there and follow it.
+
+The main app design is **TRI AI Research Programme Website Design Specification v3** (`1lmFzpN0sv-hfFkJ6Vd-IlLruTjnt-Di3`) in **01 Program Design**. Product, UX, routes, data model, and architecture come from that file.
+
+## Layout
+
+- 01 Program Design — website design specification (the app) and the program proposal
+- 02 Applications & Forms — researcher guide, senior researcher guide, proposal template
+- 03 Communications — email and communications pack
+- 04 Project Operations — operations playbook
+- 06 Monitoring & Reporting — progress update template
+- 07 Templates & Agreements — project charter
+- 08 Internal Review & Matching — evaluation and mentor matching rubric
+- 15 Forms Blueprints — researcher/proposal form and senior researcher application form
+- `TRI_AI_Research_Programme_Master_Tracker.xlsx` — live operational tracker
+
+## Tracker
+
+IDs: `SR-###`, `RP-###`, `MM-###`, `PRJ-###`, `REC-###`, `OUT-###`. Dates use `YYYY-MM-DD`.
+
+Proposal score is out of 100: Problem Importance 20, Novelty 20, Methodology 20, Feasibility 15, Researcher Readiness 15, Output Potential 10.
+
+Pipeline statuses: Submitted, Under Review, Revise, Ready for Matching, Held for Matching, Declined.
+
+Mentor fit is out of 25: Research Area, Method, Interest, Availability, and Complementarity, 5 points each.
+
+Flow: add Senior Researchers, score proposals, log every mentor outreach, open an Active Project once a charter is agreed, then record outputs.

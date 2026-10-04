@@ -1,0 +1,19 @@
+---
+description: Main app design from the Programme Design website specification
+alwaysApply: true
+---
+
+# App design
+
+Follow **TRI AI Research Programme Website Design Specification v3** (`1lmFzpN0sv-hfFkJ6Vd-IlLruTjnt-Di3`) in Drive folder 01 Program Design. Re-read it before implementing screens or changing the stack.
+
+The product is a public programme site and a lightweight research workspace. It should reduce administrative friction around research. User-facing copy uses Programme.
+
+Two Researcher routes converge at readiness, mentor matching, scoping, and activation:
+
+- Direct Proposal: a structured proposal, then review.
+- TRI AI Saturdays Research Mentorship Award: an invite and scoping step, not a second application.
+
+Roles: public visitor, Researcher, Senior Researcher, TRI AI Admin, TRI AI Reviewer. Mentor acceptance is voluntary. Only projects TRI marks publishable appear on the public showcase.
+
+Fixed v1 architecture: React, TypeScript, and Vite on GitHub Pages; Firebase Authentication; Cloud Firestore for records; Google Drive for files. Firestore stores Drive IDs and metadata, not file bytes. Do not add Express or Next.js API routes, Firebase Storage, or privileged Drive credentials in the client. The interface inherits the visual system of tri-ai.org.
