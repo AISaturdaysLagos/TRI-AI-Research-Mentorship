@@ -9,11 +9,11 @@ Follow **TRI AI Research Programme Website Design Specification v3** (`1lmFzpN0s
 
 The product is a public programme site and a lightweight research workspace. It should reduce administrative friction around research. User-facing copy uses Programme.
 
-Two Researcher routes converge at readiness, mentor matching, scoping, and activation:
+Two Researcher routes converge at readiness, Senior Researcher matching, scoping, and activation:
 
 - Direct Proposal: a structured proposal, then review.
-- TRI AI Saturdays Research Mentorship Award: an invite and scoping step, not a second application.
+- TRI AI Saturdays Award: an invite and scoping step, not a second application. Always use that full name. Do not shorten it to Saturday, Saturdays, or Saturday Award. Several researchers may share one TRI AI Saturdays Award. A researcher belongs to only one TRI AI Saturdays Award project.
 
-Roles: public visitor, Researcher, Senior Researcher, TRI AI Admin, TRI AI Reviewer. Mentor acceptance is voluntary. Only projects TRI marks publishable appear on the public showcase.
+Roles: public visitor, Researcher, Senior Researcher, TRI AI Admin, TRI AI Reviewer. In user-facing copy, call this role Senior Researcher, not Mentor. Senior Researcher acceptance is voluntary. A TRI AI admin can copy an invite link that lets a new Researcher or a Senior Researcher join an existing project. Joining is their choice. The public research page lists current projects (scoping, active, and internal review) and any project TRI AI marks publishable.
 
 Fixed v1 architecture: React, TypeScript, and Vite on GitHub Pages; Firebase Authentication; Cloud Firestore for records; Google Drive for files. Firestore stores Drive IDs and metadata, not file bytes. Do not add Express or Next.js API routes, Firebase Storage, or privileged Drive credentials in the client. The interface inherits the visual system of tri-ai.org.

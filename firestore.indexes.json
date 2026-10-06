@@ -46,6 +46,23 @@
   //     ]
   //   },
   // ]
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "researcherId", "order": "ASCENDING" },
+        { "fieldPath": "introduced", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "researcherIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "introduced", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

@@ -1,60 +1,79 @@
-import { FormEvent, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { EmailSupport } from "../components/EmailSupport";
+import { ProposalRead } from "../components/ProposalRead";
+import { named, proposalSubmittedEmail, type EmailDraft } from "../lib/email";
 import { useAuth } from "../lib/auth";
 import {
+  listParticipantProjects,
+  listResearcherProposals,
+  listResearchProjects,
+  projectProposalIds,
+  proposalDraftFromRecord,
   readLocalProposal,
   readLocalProposalId,
   saveProposal,
   writeLocalProposal,
 } from "../lib/records";
-import { EMPTY_PROPOSAL, PROPOSAL_STEPS, type ProposalDraft } from "../types/domain";
+import { EMPTY_PROPOSAL, PROPOSAL_LABELS, PROPOSAL_STEPS, type ProposalDraft } from "../types/domain";
+
+type SavedProposal = ProposalDraft & { id: string; status?: string; route?: string };
+
+const hints: Partial<Record<keyof ProposalDraft, string>> = {
+  africaRelevance: "Name the place, language, dataset, or community this work is for.",
+  summary: "A few sentences a Senior Researcher can read first.",
+  problem: "Why this is worth a project.",
+  question: "One clear question or hypothesis.",
+  relatedWork: "The work this proposal builds on.",
+  methodology: "How you will carry out the study.",
+  data: "What data you will use, and whether you already have access.",
+  evaluation: "How you will know the result is sound.",
+  contribution: "What will exist at the end that does not exist now.",
+  readiness: "Skills and previous work that prepare you for this.",
+  mentorExpertise: "The support you want from a Senior Researcher.",
+  resources: "Compute, data, or other support you expect to need.",
+  timeline: "For example, 4 months.",
+  intendedOutput: "A paper, dataset, model, or tool.",
+  risks: "What could slow the project down.",
+  links: "A URL is enough.",
+};
 
 const fields: Record<(typeof PROPOSAL_STEPS)[number], (keyof ProposalDraft)[]> = {
   "Applicant profile": ["name", "affiliation", "location", "applicantStatus", "bio", "github", "scholar"],
   "Proposal overview": ["title", "researchArea", "africaRelevance", "summary"],
   "Research plan": ["problem", "question", "relatedWork", "methodology", "data", "evaluation", "contribution"],
-  "Applicant and mentorship fit": ["readiness", "mentorExpertise"],
+  "Applicant and Senior Researcher fit": ["readiness", "mentorExpertise"],
   "Resources and risks": ["resources", "timeline", "intendedOutput", "risks"],
   "Supporting materials": ["links"],
   "Review and submit": [],
 };
 
-const labels: Record<keyof ProposalDraft, string> = {
-  name: "Full name",
-  affiliation: "Institution or organisation",
-  location: "Country or location",
-  applicantStatus: "Current status",
-  bio: "Field or programme of study",
-  github: "GitHub or portfolio",
-  scholar: "Google Scholar or publications",
-  title: "Project title",
-  researchArea: "Primary research area",
-  africaRelevance: "Does this address an African problem, population, dataset, language, environment, or context?",
-  summary: "Executive summary",
-  problem: "Why does this problem matter?",
-  question: "Main research question or hypothesis",
-  relatedWork: "Relevant prior work",
-  methodology: "Proposed methodology",
-  data: "Datasets and data access status",
-  evaluation: "Evaluation approach",
-  contribution: "Expected research contribution",
-  readiness: "Relevant skills and previous work",
-  mentorExpertise: "What expertise do you need from a Senior Researcher?",
-  resources: "Major compute or resource needs",
-  timeline: "Expected project duration",
-  intendedOutput: "Intended research output",
-  risks: "Main risks or dependencies",
-  links: "Link to supporting code, preliminary experiments, or materials",
-};
+function pickProposal(items: SavedProposal[], requestedId: string | null, localId: string | null) {
+  const direct = items.filter((item) => item.route !== "saturdays");
+  return (
+    direct.find((item) => item.id === requestedId) ||
+    direct.find((item) => item.id === localId) ||
+    direct.find((item) => item.status === "revise") ||
+    direct.find((item) => item.status === "draft") ||
+    direct[0] ||
+    null
+  );
+}
 
 export function ApplyResearcherPage() {
-  const { user, configured } = useAuth();
+  const { user, profile } = useAuth();
+  const [params] = useSearchParams();
+  const requestedId = params.get("proposal");
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<ProposalDraft>(() => readLocalProposal() ?? EMPTY_PROPOSAL);
   const [proposalId, setProposalId] = useState<string | null>(() => readLocalProposalId());
+  const [proposalStatus, setProposalStatus] = useState("");
+  const [saved, setSaved] = useState<SavedProposal[]>([]);
   const [message, setMessage] = useState("");
+  const [mail, setMail] = useState<EmailDraft | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const editable = !proposalStatus || proposalStatus === "draft" || proposalStatus === "revise";
   const current = PROPOSAL_STEPS[step];
   const keys = fields[current];
   const long = useMemo(
@@ -80,6 +99,49 @@ export function ApplyResearcherPage() {
     [],
   );
 
+  function loadProposal(item: SavedProposal) {
+    const next = proposalDraftFromRecord(item);
+    setDraft(next);
+    setProposalId(item.id);
+    setProposalStatus(String(item.status ?? ""));
+    writeLocalProposal(next, item.id);
+    setMessage("");
+    setError("");
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    Promise.all([listResearcherProposals(user.uid), listParticipantProjects(user.uid), listResearchProjects()])
+      .then(([items, projectRows, programmeProjects]) => {
+        if (cancelled) return;
+        const matched = projectProposalIds([
+          ...(projectRows as { id?: string; proposalId?: string }[]),
+          ...(programmeProjects as { id?: string; proposalId?: string }[]),
+        ]);
+        const records = (items as SavedProposal[]).filter((item) => !matched.has(item.id));
+        const direct = records.filter((item) => item.route !== "saturdays");
+        setSaved(direct);
+        const localId = readLocalProposalId();
+        const chosen = pickProposal(records, requestedId, localId);
+        if (chosen) {
+          const next = proposalDraftFromRecord(chosen);
+          setDraft(next);
+          setProposalId(chosen.id);
+          setProposalStatus(String(chosen.status ?? ""));
+          writeLocalProposal(next, chosen.id);
+          return;
+        }
+        if (profile?.displayName) {
+          setDraft((current) => (current.name ? current : { ...current, name: profile.displayName }));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.displayName, requestedId, user]);
+
   function update(key: keyof ProposalDraft, value: string) {
     const next = { ...draft, [key]: value };
     setDraft(next);
@@ -88,7 +150,7 @@ export function ApplyResearcherPage() {
 
   async function persist(status: "draft" | "received") {
     if (!user) {
-      setMessage("Saved on this device. Sign in to store the proposal in the programme record.");
+      setMessage("Saved on this device. Sign in to submit.");
       return;
     }
     setBusy(true);
@@ -97,7 +159,15 @@ export function ApplyResearcherPage() {
       const id = await saveProposal(proposalId, user.uid, draft, status);
       setProposalId(id);
       writeLocalProposal(draft, id);
-      setMessage(status === "received" ? "Proposal received." : "Draft saved to your record.");
+      setMessage(status === "received" ? "Proposal received." : "Draft saved.");
+      if (status === "received") {
+        setMail(
+          proposalSubmittedEmail({
+            title: draft.title || "Untitled proposal",
+            researcher: named(draft.name || profile?.displayName || "", user.email || ""),
+          }),
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
     } finally {
@@ -116,12 +186,7 @@ export function ApplyResearcherPage() {
         <div className="container">
           <p className="mono">Direct proposal</p>
           <h1>Propose a research project.</h1>
-          <p className="lede">
-            This form is for the Direct Proposal Route. Students whose projects have already
-            received the TRI AI Saturdays Research Mentorship Award do not submit it again. Strong
-            direct proposals may be presented to Senior Researchers. Shortlisting does not
-            guarantee a mentor match or project activation.
-          </p>
+          <p className="lede">Submit a research proposal.</p>
         </div>
       </header>
       <section className="container form-layout">
@@ -130,10 +195,11 @@ export function ApplyResearcherPage() {
             <li key={label}>
               <button
                 type="button"
-                className={index === step ? "is-current" : ""}
+                className={index === step ? "is-current" : index < step ? "is-done" : ""}
                 onClick={() => setStep(index)}
               >
-                {index + 1}. {label}
+                <span className="step-num">{index + 1}</span>
+                <span>{label}</span>
               </button>
             </li>
           ))}
@@ -141,34 +207,65 @@ export function ApplyResearcherPage() {
         <form onSubmit={onSubmit}>
           {!user ? (
             <div className="notice">
-              You can draft here now. <Link to="/login">Sign in</Link> before you submit so the
-              proposal is tied to your account.
-              {!configured ? " Firebase still needs to be configured for sign-in." : ""}
+              <Link className="btn btn-ghost btn-compact" to="/login">Sign in</Link> to submit.
             </div>
           ) : null}
+          {saved.length > 1 ? (
+            <div className="actions" style={{ marginTop: 0, marginBottom: 16 }}>
+              {saved.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={item.id === proposalId ? "btn btn-primary btn-compact" : "btn btn-ghost btn-compact"}
+                  onClick={() => loadProposal(item)}
+                >
+                  {item.title || "Untitled proposal"}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {proposalStatus && !editable ? (
+            <div className="notice">Submitted.</div>
+          ) : null}
+          <p className="quiet form-progress">Step {step + 1} of {PROPOSAL_STEPS.length}</p>
           <h2>{current}</h2>
-          <div className="fields" style={{ marginTop: 16 }}>
-            {keys.map((key) => (
-              <label key={key}>
-                {labels[key]}
-                {long.has(key) ? (
-                  <textarea value={draft[key]} onChange={(event) => update(key, event.target.value)} />
-                ) : (
-                  <input value={draft[key]} onChange={(event) => update(key, event.target.value)} />
-                )}
-              </label>
-            ))}
+          <div className={current === "Review and submit" ? "fields" : "fields proposal-form"}>
             {current === "Review and submit" ? (
-              <div className="card">
-                <h3>{draft.title || "Untitled proposal"}</h3>
-                <p>{draft.summary || "Add a summary before you submit."}</p>
-                <p className="quiet" style={{ marginTop: 8 }}>
-                  {draft.name} · {draft.researchArea || "Research area not set"}
-                </p>
-              </div>
-            ) : null}
+              <ProposalRead
+                sections={PROPOSAL_STEPS.slice(0, -1).map((title) => ({
+                  title,
+                  fields: fields[title].map((key) => ({
+                    label: PROPOSAL_LABELS[key],
+                    value: draft[key],
+                  })),
+                }))}
+              />
+            ) : (
+              keys.map((key) => (
+                <label key={key}>
+                  <span>{PROPOSAL_LABELS[key]}</span>
+                  {hints[key] ? <span className="hint">{hints[key]}</span> : null}
+                  {long.has(key) ? (
+                    <textarea
+                      value={draft[key]}
+                      rows={key === "summary" || key === "methodology" ? 6 : 4}
+                      onChange={(event) => update(key, event.target.value)}
+                    />
+                  ) : (
+                    <input
+                      value={draft[key]}
+                      autoComplete={key === "name" ? "name" : key === "github" ? "url" : undefined}
+                      inputMode={key === "github" || key === "scholar" ? "url" : undefined}
+                      placeholder={key === "github" || key === "scholar" ? "https://" : undefined}
+                      onChange={(event) => update(key, event.target.value)}
+                    />
+                  )}
+                </label>
+              ))
+            )}
           </div>
           {message ? <p className="quiet" style={{ marginTop: 16 }}>{message}</p> : null}
+          <EmailSupport draft={mail} />
           {error ? <p className="error">{error}</p> : null}
           <div className="form-actions">
             <button className="btn btn-ghost" type="button" disabled={step === 0} onClick={() => setStep(step - 1)}>
@@ -179,14 +276,14 @@ export function ApplyResearcherPage() {
                 className="btn btn-primary"
                 type="button"
                 onClick={() => {
-                  void persist("draft");
+                  if (editable) void persist("draft");
                   setStep(step + 1);
                 }}
               >
                 Continue
               </button>
             ) : (
-              <button className="btn btn-primary" type="submit" disabled={busy || !user}>
+              <button className="btn btn-primary" type="submit" disabled={busy || !user || !editable}>
                 Submit proposal
               </button>
             )}

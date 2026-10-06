@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "tri-ai-research-mentorship"
+    "default": "tri-ai-research-mentorship",
+    "demo": "tri-ai-research-demo"
   },
   "targets": {},
   "etags": {}

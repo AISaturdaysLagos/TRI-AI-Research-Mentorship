@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
+import { Loader } from "./Loader";
 
 export function PublicLayout() {
   return (
@@ -21,7 +22,7 @@ export function PublicLayout() {
 export function RequireAuth() {
   const { ready, user, configured } = useAuth();
   const location = useLocation();
-  if (!ready) return <p className="container section">Loading…</p>;
+  if (!ready) return <Loader label="Loading the programme" />;
   if (!configured || !user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }

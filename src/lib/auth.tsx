@@ -5,6 +5,7 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  updateProfile,
   type User,
 } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -28,6 +29,7 @@ type AuthState = {
   signInWithPassword: (email: string, password: string) => Promise<void>;
   registerWithPassword: (email: string, password: string) => Promise<void>;
   chooseRole: (role: SelfServeRole, displayName: string) => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -76,17 +78,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       async signInWithGoogle() {
         const auth = firebaseAuth();
-        if (!auth) throw new Error("Firebase is not configured.");
+        if (!auth) throw new Error("This is unavailable right now.");
         await signInWithPopup(auth, new GoogleAuthProvider());
       },
       async signInWithPassword(email, password) {
         const auth = firebaseAuth();
-        if (!auth) throw new Error("Firebase is not configured.");
+        if (!auth) throw new Error("This is unavailable right now.");
         await signInWithEmailAndPassword(auth, email, password);
       },
       async registerWithPassword(email, password) {
         const auth = firebaseAuth();
-        if (!auth) throw new Error("Firebase is not configured.");
+        if (!auth) throw new Error("This is unavailable right now.");
         await createUserWithEmailAndPassword(auth, email, password);
       },
       async chooseRole(role, displayName) {
@@ -106,6 +108,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: displayName || current.displayName || "",
           role,
         });
+      },
+      async updateDisplayName(displayName) {
+        const auth = firebaseAuth();
+        const db = firestore();
+        const current = auth?.currentUser;
+        if (!auth || !db || !current || !profile) throw new Error("Sign in before updating your account.");
+        const name = displayName.trim();
+        await updateProfile(current, { displayName: name });
+        await setDoc(
+          doc(db, "users", current.uid),
+          { displayName: name, updatedAt: serverTimestamp() },
+          { merge: true },
+        );
+        setProfile({ ...profile, displayName: name });
       },
       async logout() {
         const auth = firebaseAuth();

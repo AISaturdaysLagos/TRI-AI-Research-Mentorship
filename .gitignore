@@ -2,6 +2,9 @@ node_modules
 dist
 .env
 .env.local
+.env.demo
 .tmp
 *.log
 .DS_Store
+.firebase
+.drive-sync

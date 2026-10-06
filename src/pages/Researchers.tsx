@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Icon, Mark } from "../components/Icon";
 
 export function ResearchersPage() {
   return (
@@ -9,10 +10,11 @@ export function ResearchersPage() {
           <h1>Turn strong AI research ideas into rigorous, supported projects.</h1>
           <p className="lede">
             The Researcher Programme helps students and early-career researchers do that work with
-            experienced mentorship.
+            an experienced Senior Researcher.
           </p>
           <div className="actions">
             <Link className="btn btn-primary" to="/apply/researcher">
+              <Icon name="apply" />
               Apply as a Researcher
             </Link>
           </div>
@@ -21,55 +23,20 @@ export function ResearchersPage() {
       <section className="section-tight">
         <div className="container card-grid">
           <article className="card">
-            <h3>Direct Proposal Route</h3>
-            <p>
-              Submit a specific research proposal for TRI AI review. Direct applicants should have
-              enough technical or research experience to formulate a research question and
-              contribute substantially to the work. Students and early-career researchers are
-              especially encouraged.
-            </p>
-            <p>
-              A proposal may be shortlisted for mentor matching, returned for refinement, held
-              until an appropriate mentor is available, or declined. Shortlisting does not
-              guarantee that a project will launch.
-            </p>
+            <h3><Mark name="document">Direct Proposal Route</Mark></h3>
+            <p>Submit a research proposal. Students and early-career researchers can apply.</p>
           </article>
           <article className="card">
-            <h3>TRI AI Saturdays Research Mentorship Award</h3>
-            <p>
-              Selected top student projects may be awarded research mentorship based on project
-              performance and research potential. The award recognises strong project performance
-              and the potential to develop the work into rigorous research.
-            </p>
-            <p>
-              Recipients do not restart the application. TRI AI uses the existing project as the
-              starting point and asks only for the information needed to turn it into a research
-              plan. The award guarantees entry into the mentorship route. The mentor, research
-              scope, resource allocation, and activation timeline depend on fit, readiness, and
-              availability.
-            </p>
+            <h3><Mark name="award">TRI AI Saturdays Award</Mark></h3>
+            <p>Selected projects receive a TRI AI Saturdays Award and continue into the programme.</p>
           </article>
           <article className="card">
-            <h3>What TRI AI provides</h3>
-            <p>Subject to approval and availability:</p>
-            <p>
-              Research mentorship. Compute or infrastructure support. Administrative and project
-              coordination. Internal research review. Publication and dissemination support. Access
-              to additional collaborators where useful.
-            </p>
+            <h3><Mark name="resource">What TRI AI provides</Mark></h3>
+            <p>A Senior Researcher, compute, project coordination, review, and help sharing the work.</p>
           </article>
           <article className="card">
-            <h3>What you take on</h3>
-            <p>
-              Most projects should initially target approximately 3–6 months. You drive the project,
-              prepare for mentor meetings, keep clear research records, communicate blockers early,
-              and follow responsible research and data practices.
-            </p>
-            <p>
-              Projects may produce papers, preprints, technical reports, datasets, benchmarks,
-              models, software, prototypes, or other credible research artefacts. Publication is
-              not guaranteed. The quality of the research is the primary standard.
-            </p>
+            <h3><Mark name="researcher">What you take on</Mark></h3>
+            <p>Most projects run for about 3–6 months. You lead the work.</p>
           </article>
         </div>
       </section>

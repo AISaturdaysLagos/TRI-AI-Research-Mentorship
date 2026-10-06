@@ -22,9 +22,79 @@ service cloud.firestore {
     function self(uid) {
       return signedIn() && request.auth.uid == uid;
     }
+    function invitePath(token) {
+      return /databases/$(database)/documents/projectInvites/$(token);
+    }
+    function inviteData(token) {
+      return get(invitePath(token)).data;
+    }
+    function claimPath(uid, projectId) {
+      return /databases/$(database)/documents/projectJoinClaims/$(uid)/projects/$(projectId);
+    }
+    function openInvite(token, projectId) {
+      return token is string
+        && token.size() > 8
+        && token.size() < 80
+        && exists(invitePath(token))
+        && inviteData(token).projectId == projectId
+        && inviteData(token).status == 'open'
+        && inviteData(token).role == role();
+    }
+    function addedSelf(projectId) {
+      return request.resource.data.participantIds is list
+        && request.resource.data.participantIds.size() < 40
+        && !(request.auth.uid in resource.data.get('participantIds', []))
+        && request.auth.uid in request.resource.data.participantIds
+        && resource.data.get('participantIds', []).removeAll(request.resource.data.participantIds).size() == 0
+        && request.resource.data.participantIds.removeAll(resource.data.get('participantIds', [])).hasOnly([request.auth.uid])
+        && exists(claimPath(request.auth.uid, projectId))
+        && openInvite(get(claimPath(request.auth.uid, projectId)).data.inviteToken, projectId);
+    }
+    function addedPerson(field) {
+      let added = request.resource.data[field].removeAll(resource.data.get(field, []));
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantIds', field, 'updatedAt'])
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data[field] is list
+        && request.resource.data[field].size() < 40
+        && resource.data.get(field, []).removeAll(request.resource.data[field]).size() == 0
+        && added.size() == 1
+        && added[0].keys().hasOnly(['uid', 'name'])
+        && added[0].uid == request.auth.uid
+        && added[0].name is string
+        && added[0].name.size() > 0
+        && added[0].name.size() < 120;
+    }
+    function awardJoinOk(projectId) {
+      return resource.data.get('awardId', '') == ''
+        || (exists(/databases/$(database)/documents/researcherAwardProjects/$(request.auth.uid))
+          && get(/databases/$(database)/documents/researcherAwardProjects/$(request.auth.uid)).data.projectId == projectId);
+    }
+    function joiningAward(awardId) {
+      let addedIds = request.resource.data.recipientIds.removeAll(resource.data.get('recipientIds', []));
+      let addedPeople = request.resource.data.recipients.removeAll(resource.data.get('recipients', []));
+      return role() == 'researcher'
+        && exists(/databases/$(database)/documents/researcherAwardProjects/$(request.auth.uid))
+        && get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/researcherAwardProjects/$(request.auth.uid)).data.projectId)).data.awardId == awardId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['recipientIds', 'recipients', 'updatedAt'])
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.recipientIds is list
+        && request.resource.data.recipientIds.size() < 40
+        && !(request.auth.uid in resource.data.get('recipientIds', []))
+        && resource.data.get('recipientIds', []).removeAll(request.resource.data.recipientIds).size() == 0
+        && addedIds.hasOnly([request.auth.uid])
+        && request.resource.data.recipients is list
+        && request.resource.data.recipients.size() < 40
+        && resource.data.get('recipients', []).removeAll(request.resource.data.recipients).size() == 0
+        && addedPeople.size() == 1
+        && addedPeople[0].keys().hasOnly(['uid', 'name'])
+        && addedPeople[0].uid == request.auth.uid
+        && addedPeople[0].name is string
+        && addedPeople[0].name.size() > 0
+        && addedPeople[0].name.size() < 120;
+    }
 
     match /users/{uid} {
-      allow read: if self(uid) || isAdmin();
+      allow read: if self(uid) || isAdmin() || (role() == 'senior_researcher' && resource.data.role == 'admin');
       allow create: if self(uid)
         && request.resource.data.role in ['researcher', 'senior_researcher']
         && request.resource.data.email == request.auth.token.email;
@@ -41,30 +111,348 @@ service cloud.firestore {
 
     match /seniorResearcherProfiles/{uid} {
       allow read: if self(uid) || isAdmin();
-      allow create, update: if self(uid) || isAdmin();
+      allow create: if isAdmin()
+        || (self(uid) && request.resource.data.get('poolStatus', 'pending') == 'pending');
+      allow update: if isAdmin()
+        || (self(uid)
+          && request.resource.data.get('poolStatus', 'pending')
+            == resource.data.get('poolStatus', 'pending'));
       allow delete: if isAdmin();
     }
 
     match /proposals/{id} {
       allow read: if isAdmin() || isReviewer()
-        || (signedIn() && resource.data.ownerId == request.auth.uid);
+        || (signedIn() && resource.data.ownerId == request.auth.uid)
+        || (signedIn() && request.auth.uid in resource.data.get('researcherIds', []));
       allow create: if signedIn()
         && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.status in ['draft', 'received', 'research_scoping'];
+        && request.resource.data.status in ['draft', 'received', 'research_scoping']
+        && request.resource.data.get('introduction', '') == '';
       allow update: if isAdmin()
-        || isReviewer()
-        || (signedIn()
-          && resource.data.ownerId == request.auth.uid
-          && resource.data.status in ['draft', 'revise', 'research_scoping']
-          && request.resource.data.ownerId == resource.data.ownerId);
+        || ((isReviewer()
+          || (signedIn()
+            && resource.data.ownerId == request.auth.uid
+            && resource.data.status in ['draft', 'revise', 'research_scoping']
+            && request.resource.data.ownerId == resource.data.ownerId
+            && request.resource.data.get('researcherIds', []) == resource.data.get('researcherIds', [])))
+          && request.resource.data.get('introduction', '') == resource.data.get('introduction', ''));
       allow delete: if isAdmin();
+    }
+
+    function projectBool(data, name) {
+      return data.get(name, false) is bool;
+    }
+
+    function meetingHasHappened(projectId, meetingId) {
+      let path = /databases/$(database)/documents/meetings/$(meetingId);
+      let proposalId = request.resource.data.get('proposalId', resource.data.get('proposalId', ''));
+      let meeting = get(path).data;
+      return meetingId is string
+        && meetingId.size() > 0
+        && meetingId.size() < 120
+        && exists(path)
+        && meeting.status != 'cancelled'
+        && meeting.endsAt < request.time
+        && (meeting.projectId == projectId
+          || (meeting.kind == 'scoping'
+            && proposalId is string
+            && proposalId.size() > 0
+            && meeting.proposalId == proposalId));
+    }
+
+    function projectProgressOk(projectId) {
+      let scopedBefore = resource.data.get('scoped', false) == true;
+      let scopedAfter = request.resource.data.get('scoped', false) == true;
+      let charterBefore = resource.data.get('charterSigned', false) == true;
+      let charterAfter = request.resource.data.get('charterSigned', false) == true;
+      let meetingId = request.resource.data.get('scopedMeetingId', '');
+      let proposalId = request.resource.data.get('proposalId', '');
+      let statusBefore = resource.data.status;
+      let statusAfter = request.resource.data.status;
+      return projectBool(request.resource.data, 'scoped')
+        && projectBool(request.resource.data, 'charterSigned')
+        && proposalId is string
+        && proposalId.size() < 120
+        && meetingId is string
+        && meetingId.size() < 120
+        && (!scopedBefore || scopedAfter)
+        && (!charterBefore || charterAfter)
+        && (scopedBefore || !scopedAfter || meetingId == '' || meetingHasHappened(projectId, meetingId))
+        && (statusAfter != 'active'
+          || statusBefore == 'active'
+          || (scopedAfter && charterAfter))
+        && statusAfter in ['scoping', 'active', 'paused', 'internal_review', 'completed', 'discontinued']
+        && request.resource.data.get('health', 'green') in ['green', 'amber', 'red']
+        && request.resource.data.get('question', '') is string
+        && request.resource.data.get('question', '').size() < 800
+        && request.resource.data.get('contribution', '') is string
+        && request.resource.data.get('contribution', '').size() < 800
+        && request.resource.data.get('year', '') is string
+        && request.resource.data.get('year', '').size() < 8;
+    }
+
+    function driveLayoutUpdate(projectId) {
+      return projectMember(projectId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'driveFolderId', 'driveFolderUrl', 'driveFiles', 'updatedAt'
+        ])
+        && request.resource.data.driveFolderId is string
+        && request.resource.data.driveFolderId.size() > 8
+        && request.resource.data.driveFolderId.size() < 120
+        && request.resource.data.driveFolderUrl is string
+        && request.resource.data.driveFolderUrl.matches('https://drive\\.google\\.com/drive/folders/.*')
+        && request.resource.data.driveFolderUrl.size() < 300
+        && request.resource.data.driveFiles is list
+        && request.resource.data.driveFiles.size() < 80
+        && request.resource.data.updatedAt is timestamp;
+    }
+
+    function projectMember(projectId) {
+      return isAdmin()
+        || (signedIn()
+          && exists(/databases/$(database)/documents/projects/$(projectId))
+          && request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.get('participantIds', []));
+    }
+
+    function noteOk(value) {
+      return value is string && value.size() < 2000;
+    }
+
+    function linkOk(value) {
+      return value is string
+        && value.size() < 500
+        && (value.size() == 0 || value.matches('https://.*') || value.matches('http://.*'));
     }
 
     match /projects/{id} {
       allow read: if resource.data.publicShowcase == true
+        || resource.data.status in ['active', 'scoping', 'internal_review']
         || isAdmin()
         || (signedIn() && request.auth.uid in resource.data.participantIds);
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if (isAdmin() && projectProgressOk(id))
+        || (signedIn()
+          && addedSelf(id)
+          && (
+            (role() == 'researcher' && addedPerson('researchers') && awardJoinOk(id))
+            || (role() == 'senior_researcher' && addedPerson('seniorResearchers'))
+          ))
+        || driveLayoutUpdate(id);
+
+      match /charter/{docId} {
+        allow read: if projectMember(id);
+        allow create, update: if projectMember(id)
+          && docId == 'current'
+          && request.resource.data.keys().hasOnly([
+            'scope', 'roles', 'cadence', 'resources', 'integrity', 'authorship', 'release', 'updatedBy', 'updatedAt'
+          ])
+          && noteOk(request.resource.data.scope)
+          && noteOk(request.resource.data.roles)
+          && noteOk(request.resource.data.cadence)
+          && noteOk(request.resource.data.resources)
+          && noteOk(request.resource.data.integrity)
+          && noteOk(request.resource.data.authorship)
+          && noteOk(request.resource.data.release)
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if false;
+      }
+
+      match /milestones/{itemId} {
+        allow read: if projectMember(id);
+        allow create: if projectMember(id)
+          && request.resource.data.keys().hasOnly([
+            'title', 'ownerName', 'due', 'status', 'evidence', 'createdBy', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() < 160
+          && request.resource.data.ownerName is string
+          && request.resource.data.ownerName.size() > 0
+          && request.resource.data.ownerName.size() < 120
+          && request.resource.data.due is string
+          && request.resource.data.due.size() < 12
+          && request.resource.data.status == 'open'
+          && linkOk(request.resource.data.evidence)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+        allow update: if projectMember(id)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          && request.resource.data.status in ['open', 'done']
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if false;
+      }
+
+      match /updates/{itemId} {
+        allow read: if projectMember(id);
+        allow create: if projectMember(id)
+          && request.resource.data.keys().hasOnly([
+            'period', 'changes', 'evidence', 'blockers', 'nextStep', 'triAction', 'createdBy', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.period is string
+          && request.resource.data.period.size() > 0
+          && request.resource.data.period.size() < 80
+          && noteOk(request.resource.data.changes)
+          && noteOk(request.resource.data.evidence)
+          && noteOk(request.resource.data.blockers)
+          && noteOk(request.resource.data.nextStep)
+          && noteOk(request.resource.data.triAction)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+        allow update, delete: if false;
+      }
+
+      match /resources/{itemId} {
+        allow read: if projectMember(id);
+        allow create: if projectMember(id)
+          && request.resource.data.keys().hasOnly([
+            'type', 'request', 'status', 'limits', 'createdBy', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.type in ['compute', 'data', 'software']
+          && request.resource.data.request is string
+          && request.resource.data.request.size() > 0
+          && request.resource.data.request.size() < 1000
+          && request.resource.data.status == 'requested'
+          && request.resource.data.limits == ''
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+        allow update: if isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'limits', 'updatedAt'])
+          && request.resource.data.status in ['requested', 'approved', 'partial', 'declined']
+          && request.resource.data.limits is string
+          && request.resource.data.limits.size() < 500
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if false;
+      }
+
+      match /workTasks/{itemId} {
+        allow read: if projectMember(id);
+        allow create: if projectMember(id)
+          && request.resource.data.keys().hasOnly([
+            'title', 'status', 'ownerName', 'due', 'notes', 'createdBy', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() < 160
+          && request.resource.data.status == 'todo'
+          && request.resource.data.ownerName is string
+          && request.resource.data.ownerName.size() < 120
+          && request.resource.data.due == ''
+          && noteOk(request.resource.data.notes)
+          && request.resource.data.notes.size() == 0
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+        allow update: if projectMember(id)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'status', 'ownerName', 'due', 'notes', 'updatedAt'
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() < 160
+          && request.resource.data.status in ['todo', 'doing', 'done']
+          && request.resource.data.ownerName is string
+          && request.resource.data.ownerName.size() < 120
+          && request.resource.data.due is string
+          && request.resource.data.due.size() < 12
+          && noteOk(request.resource.data.notes)
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if isAdmin()
+          || (projectMember(id) && resource.data.createdBy == request.auth.uid);
+      }
+
+      match /outputs/{itemId} {
+        allow read: if resource.data.public == true || projectMember(id);
+        allow create: if projectMember(id)
+          && request.resource.data.keys().hasOnly([
+            'type', 'title', 'status', 'link', 'venue', 'year', 'public', 'createdBy', 'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.type in ['paper', 'preprint', 'dataset', 'benchmark', 'model', 'software', 'report']
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() < 200
+          && request.resource.data.status in ['planned', 'drafting', 'internal_review', 'submitted', 'accepted', 'published', 'rejected', 'archived']
+          && linkOk(request.resource.data.link)
+          && request.resource.data.venue is string
+          && request.resource.data.venue.size() < 200
+          && request.resource.data.year is string
+          && request.resource.data.year.size() < 8
+          && request.resource.data.public == false
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt is timestamp
+          && request.resource.data.updatedAt is timestamp;
+        allow update: if isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['public', 'updatedAt'])
+          && request.resource.data.public is bool
+          && request.resource.data.updatedAt is timestamp;
+        allow delete: if false;
+      }
+    }
+
+    match /projectInvites/{token} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'projectId', 'projectTitle', 'role', 'status', 'awardId', 'acceptedIds',
+          'guestName', 'guestEmail', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.projectId is string
+        && request.resource.data.projectId.size() > 0
+        && request.resource.data.projectId.size() < 120
+        && request.resource.data.projectTitle is string
+        && request.resource.data.projectTitle.size() > 0
+        && request.resource.data.projectTitle.size() < 200
+        && request.resource.data.role in ['researcher', 'senior_researcher']
+        && request.resource.data.status == 'open'
+        && request.resource.data.awardId is string
+        && request.resource.data.awardId.size() < 120
+        && request.resource.data.acceptedIds is list
+        && request.resource.data.acceptedIds.size() == 0
+        && request.resource.data.guestName is string
+        && request.resource.data.guestName.size() > 0
+        && request.resource.data.guestName.size() < 80
+        && request.resource.data.guestEmail is string
+        && request.resource.data.guestEmail.matches('^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$')
+        && request.resource.data.guestEmail.size() < 120
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp;
+      allow update: if isAdmin()
+        || (signedIn()
+          && resource.data.status == 'open'
+          && resource.data.role == role()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['acceptedIds', 'updatedAt'])
+          && request.resource.data.updatedAt is timestamp
+          && request.resource.data.acceptedIds is list
+          && request.resource.data.acceptedIds.size() < 100
+          && resource.data.get('acceptedIds', []).removeAll(request.resource.data.acceptedIds).size() == 0
+          && request.resource.data.acceptedIds.removeAll(resource.data.get('acceptedIds', [])).hasOnly([request.auth.uid]));
+      allow delete: if isAdmin();
+    }
+
+    match /researcherAwardProjects/{uid} {
+      allow read: if self(uid) || isAdmin();
+      allow create: if self(uid)
+        && role() == 'researcher'
+        && request.resource.data.keys().hasOnly(['projectId', 'inviteToken'])
+        && request.resource.data.projectId is string
+        && request.resource.data.projectId.size() > 0
+        && request.resource.data.projectId.size() < 120
+        && openInvite(request.resource.data.inviteToken, request.resource.data.projectId)
+        && inviteData(request.resource.data.inviteToken).awardId is string
+        && inviteData(request.resource.data.inviteToken).awardId.size() > 0;
+      allow update, delete: if isAdmin();
+    }
+
+    match /projectJoinClaims/{uid}/projects/{projectId} {
+      allow read: if self(uid) || isAdmin();
+      allow create: if self(uid)
+        && request.resource.data.keys().hasOnly(['inviteToken'])
+        && openInvite(request.resource.data.inviteToken, projectId);
+      allow update, delete: if isAdmin();
     }
 
     match /reviews/{id} {
@@ -76,22 +464,472 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    function matchText(value, max) {
+      return value is string && value.size() < max;
+    }
+
+    function seniorInterestCreate(id) {
+      let data = request.resource.data;
+      let proposalId = data.proposalId;
+      return signedIn()
+        && role() == 'senior_researcher'
+        && data.mentorId == request.auth.uid
+        && proposalId is string
+        && proposalId.size() > 0
+        && proposalId.size() < 120
+        && id == proposalId + '__' + request.auth.uid
+        && data.keys().hasOnly([
+          'proposalId', 'title', 'summary', 'question', 'researchArea', 'africaRelevance', 'contribution',
+          'researcherId', 'researcherName', 'readiness', 'methodology', 'data', 'evaluation', 'timeline',
+          'mentorNeed', 'mentorId', 'mentorName', 'fit', 'fitScore', 'note', 'response', 'responseNote',
+          'introduced', 'invited', 'createdAt', 'updatedAt'
+        ])
+        && matchText(data.title, 200)
+        && matchText(data.summary, 2000)
+        && matchText(data.question, 2000)
+        && matchText(data.researchArea, 200)
+        && matchText(data.africaRelevance, 2000)
+        && matchText(data.contribution, 2000)
+        && matchText(data.researcherId, 120)
+        && matchText(data.researcherName, 200)
+        && matchText(data.readiness, 2000)
+        && matchText(data.methodology, 2000)
+        && matchText(data.data, 2000)
+        && matchText(data.evaluation, 2000)
+        && matchText(data.timeline, 200)
+        && matchText(data.mentorNeed, 2000)
+        && matchText(data.mentorName, 120)
+        && data.fit.keys().hasOnly(['researchArea', 'method', 'interest', 'availability', 'complementarity'])
+        && data.fit.researchArea == 0
+        && data.fit.method == 0
+        && data.fit.interest == 0
+        && data.fit.availability == 0
+        && data.fit.complementarity == 0
+        && data.fitScore == 0
+        && data.note == ''
+        && data.response in ['interested', 'interested_with_questions', 'not_available', 'not_a_fit']
+        && matchText(data.responseNote, 2000)
+        && data.introduced == false
+        && data.invited == false
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && exists(/databases/$(database)/documents/proposals/$(proposalId))
+        && get(/databases/$(database)/documents/proposals/$(proposalId)).data.status == 'matching';
+    }
+
+    function seniorMatchResponse() {
+      return signedIn()
+        && resource.data.mentorId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['response', 'responseNote', 'updatedAt'])
+        && request.resource.data.response in ['interested', 'interested_with_questions', 'not_available', 'not_a_fit']
+        && matchText(request.resource.data.responseNote, 2000)
+        && request.resource.data.updatedAt is timestamp;
+    }
+
     match /matches/{id} {
       allow read: if isAdmin()
+        || (signedIn() && role() == 'senior_researcher')
         || (signedIn() && resource.data.mentorId == request.auth.uid)
-        || (signedIn() && resource.data.researcherId == request.auth.uid);
-      allow create: if isAdmin();
-      allow update: if isAdmin()
         || (signedIn()
-          && resource.data.mentorId == request.auth.uid
-          && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['response', 'responseNote', 'updatedAt']));
+          && resource.data.introduced == true
+          && (resource.data.researcherId == request.auth.uid
+            || request.auth.uid in resource.data.get('researcherIds', [])));
+      allow create: if isAdmin() || seniorInterestCreate(id);
+      allow update: if isAdmin() || seniorMatchResponse();
       allow delete: if isAdmin();
+    }
+
+    function validNotification(data, noticeId) {
+      return data.keys().hasOnly([
+          'noticeId', 'status', 'text', 'next', 'owner', 'href', 'action', 'closed', 'createdAt', 'updatedAt'
+        ])
+        && data.noticeId == noticeId
+        && data.noticeId is string
+        && data.noticeId.size() > 0
+        && data.noticeId.size() < 180
+        && data.status is string
+        && data.status.size() > 0
+        && data.status.size() < 80
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() < 600
+        && data.next is string
+        && data.next.size() < 300
+        && data.owner is string
+        && data.owner.size() > 0
+        && data.owner.size() < 80
+        && data.href is string
+        && data.href.size() < 200
+        && data.action is string
+        && data.action.size() < 80
+        && data.closed is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{uid}/notifications/{noticeId} {
+      allow read: if self(uid);
+      allow create: if self(uid) && validNotification(request.resource.data, noticeId);
+      allow update: if self(uid)
+        && validNotification(request.resource.data, noticeId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['closed', 'updatedAt'])
+        && resource.data.closed == false
+        && request.resource.data.closed == true;
+      allow delete: if false;
+    }
+
+    function personOk(person) {
+      return person.keys().hasOnly(['uid', 'name', 'email'])
+        && person.uid is string
+        && person.uid.size() > 0
+        && person.uid.size() < 128
+        && person.name is string
+        && person.name.size() > 0
+        && person.name.size() < 120
+        && person.email is string
+        && person.email.size() < 200;
+    }
+
+    function peopleOk(list) {
+      return list is list
+        && list.size() > 0
+        && list.size() < 9
+        && personOk(list[0])
+        && (list.size() < 2 || personOk(list[1]))
+        && (list.size() < 3 || personOk(list[2]))
+        && (list.size() < 4 || personOk(list[3]))
+        && (list.size() < 5 || personOk(list[4]))
+        && (list.size() < 6 || personOk(list[5]))
+        && (list.size() < 7 || personOk(list[6]))
+        && (list.size() < 8 || personOk(list[7]));
+    }
+
+    function adminsJoined(data) {
+      return !data.keys().hasAny(['admins'])
+        || (data.admins is list
+          && data.admins.size() > 0
+          && data.admins.size() < 4
+          && personOk(data.admins[0])
+          && data.admins[0].uid in data.participantIds
+          && (data.admins.size() < 2 || (personOk(data.admins[1]) && data.admins[1].uid in data.participantIds))
+          && (data.admins.size() < 3 || (personOk(data.admins[2]) && data.admins[2].uid in data.participantIds)));
+    }
+
+    function idListOk(list) {
+      return list is list
+        && list.size() > 1
+        && list.size() < 9
+        && list[0] is string
+        && list[0].size() > 0
+        && list[0].size() < 128
+        && (list.size() < 2 || (list[1] is string && list[1].size() < 128))
+        && (list.size() < 3 || (list[2] is string && list[2].size() < 128))
+        && (list.size() < 4 || (list[3] is string && list[3].size() < 128))
+        && (list.size() < 5 || (list[4] is string && list[4].size() < 128))
+        && (list.size() < 6 || (list[5] is string && list[5].size() < 128))
+        && (list.size() < 7 || (list[6] is string && list[6].size() < 128))
+        && (list.size() < 8 || (list[7] is string && list[7].size() < 128));
+    }
+
+    function calendarLinkOk(link) {
+      return link is string
+        && link.size() < 500
+        && (link == ''
+          || link.matches('https://calendar\\.google\\.com/.*')
+          || link.matches('https://www\\.google\\.com/calendar/.*'));
+    }
+
+    function validMeeting(data) {
+      return data.keys().hasOnly([
+          'kind', 'title', 'proposalId', 'projectId', 'startsAt', 'endsAt', 'note',
+          'participantIds', 'researchers', 'seniorResearchers', 'admins', 'calendarEventId', 'calendarLink',
+          'status', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && data.kind in ['scoping', 'project']
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() < 200
+        && data.proposalId is string
+        && data.proposalId.size() < 120
+        && data.projectId is string
+        && data.projectId.size() < 120
+        && (data.kind == 'scoping' ? data.proposalId.size() > 0 : data.projectId.size() > 0 && data.proposalId == '')
+        && data.startsAt is timestamp
+        && data.endsAt is timestamp
+        && data.endsAt > data.startsAt
+        && data.note is string
+        && data.note.size() < 1000
+        && idListOk(data.participantIds)
+        && peopleOk(data.researchers)
+        && peopleOk(data.seniorResearchers)
+        && adminsJoined(data)
+        && data.calendarEventId is string
+        && data.calendarEventId.size() < 200
+        && calendarLinkOk(data.calendarLink)
+        && data.status in ['scheduled', 'cancelled']
+        && data.createdBy is string
+        && data.createdBy.size() > 0
+        && data.createdBy.size() < 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function meetingData(id) {
+      return get(/databases/$(database)/documents/meetings/$(id)).data;
+    }
+
+    function validReply(data) {
+      return data.keys().hasOnly(['response', 'note', 'updatedAt'])
+        && data.response in ['attending', 'not_attending', 'needs_another_time']
+        && data.note is string
+        && data.note.size() < 500
+        && data.updatedAt is timestamp;
+    }
+
+    function seniorOnActiveProject() {
+      let project = get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data;
+      return project.status == 'active' && request.auth.uid in project.participantIds;
+    }
+
+    function seniorMayCreateMeeting() {
+      let data = request.resource.data;
+      return role() == 'senior_researcher'
+        && data.seniorResearchers[0].uid == request.auth.uid
+        && request.auth.uid in data.participantIds
+        && (data.kind != 'project' || seniorOnActiveProject());
+    }
+
+    function uidInSeniorResearchers() {
+      let people = resource.data.seniorResearchers;
+      let uid = request.auth.uid;
+      return people is list
+        && people.size() > 0
+        && (people[0].uid == uid
+          || (people.size() > 1 && people[1].uid == uid)
+          || (people.size() > 2 && people[2].uid == uid)
+          || (people.size() > 3 && people[3].uid == uid)
+          || (people.size() > 4 && people[4].uid == uid)
+          || (people.size() > 5 && people[5].uid == uid)
+          || (people.size() > 6 && people[6].uid == uid)
+          || (people.size() > 7 && people[7].uid == uid));
+    }
+
+    function seniorResearcherMayUpdateMeeting() {
+      let next = request.resource.data;
+      return role() == 'senior_researcher'
+        && request.auth.uid in resource.data.participantIds
+        && uidInSeniorResearchers()
+        && (next.status == resource.data.status || next.status == 'cancelled');
+    }
+
+    function seniorProjectClaim(proposalId) {
+      let data = request.resource.data;
+      let proposal = get(/databases/$(database)/documents/proposals/$(proposalId)).data;
+      let project = get(/databases/$(database)/documents/projects/$(data.projectId)).data;
+      return proposalId.size() > 0
+        && proposal.get('introduction', '') is string
+        && proposal.get('introduction', '').size() > 0
+        && project.proposalId == proposalId
+        && request.auth.uid in project.participantIds;
+    }
+
+    function seniorMayClaimSlot(proposalId) {
+      let data = request.resource.data;
+      return role() == 'senior_researcher'
+        && data.projectId is string
+        && data.projectId.size() > 1
+        && data.projectId.size() < 120
+        && seniorProjectClaim(proposalId);
+    }
+
+    function proposalIntroduced(proposalId) {
+      let proposal = get(/databases/$(database)/documents/proposals/$(proposalId)).data;
+      return proposal.get('introduction', '') is string && proposal.get('introduction', '').size() > 0;
+    }
+
+    function mayClaimScopingSlot(proposalId) {
+      return isAdmin() && proposalIntroduced(proposalId) || seniorMayClaimSlot(proposalId);
+    }
+
+    function scopingClaimed(proposalId, meetingId) {
+      let path = /databases/$(database)/documents/scopingSlots/$(proposalId);
+      return proposalId.size() > 0
+        && exists(path)
+        && get(path).data.meetingId == meetingId
+        && get(path).data.claimedBy == request.auth.uid;
+    }
+
+    function scopingSlotWrite(proposalId) {
+      let data = request.resource.data;
+      return mayClaimScopingSlot(proposalId)
+        && data.keys().hasAll(['meetingId', 'proposalId', 'claimedBy', 'updatedAt'])
+        && data.keys().hasOnly(['meetingId', 'proposalId', 'claimedBy', 'updatedAt', 'matchId', 'projectId'])
+        && data.proposalId == proposalId
+        && data.meetingId is string
+        && data.meetingId.size() > 0
+        && data.meetingId.size() < 120
+        && data.claimedBy == request.auth.uid
+        && data.updatedAt is timestamp;
+    }
+
+    function priorMeetingClosed() {
+      let path = /databases/$(database)/documents/meetings/$(resource.data.meetingId);
+      return !exists(path) ? true : get(path).data.get('status', '') == 'cancelled';
+    }
+
+    match /scopingSlots/{proposalId} {
+      allow get: if isAdmin() || role() == 'senior_researcher';
+      allow list: if isAdmin();
+      allow create: if scopingSlotWrite(proposalId);
+      allow update: if scopingSlotWrite(proposalId) && priorMeetingClosed();
+      allow delete: if false;
+    }
+
+    match /meetings/{id} {
+      allow read: if isAdmin()
+        || (signedIn() && request.auth.uid in resource.data.participantIds);
+      allow create: if validMeeting(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'scheduled'
+        && (isAdmin() || seniorMayCreateMeeting())
+        && (request.resource.data.kind != 'scoping' || request.resource.data.keys().hasAll(['admins']))
+        && (request.resource.data.kind != 'scoping' || scopingClaimed(request.resource.data.proposalId, id));
+      allow update: if validMeeting(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'startsAt', 'endsAt', 'note', 'calendarEventId', 'calendarLink', 'status', 'updatedAt'
+        ])
+        && (isAdmin() || seniorResearcherMayUpdateMeeting());
+      allow delete: if false;
+
+      match /responses/{uid} {
+        allow read: if isAdmin() || (signedIn() && request.auth.uid in meetingData(id).participantIds);
+        allow create, update: if self(uid)
+          && request.auth.uid in meetingData(id).participantIds
+          && meetingData(id).status == 'scheduled'
+          && validReply(request.resource.data);
+        allow delete: if false;
+      }
+    }
+
+    function awardScopeText(value) {
+      return value is string && value.size() < 4000;
+    }
+
+    function sharedAwardScope() {
+      let projectId = resource.data.get('projectId', '');
+      return (isAdmin()
+          || (signedIn()
+            && projectId is string
+            && projectId.size() > 0
+            && projectId.size() < 120
+            && exists(/databases/$(database)/documents/projects/$(projectId))
+            && request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.get('participantIds', [])))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['summary', 'question', 'timeline', 'updatedAt'])
+        && awardScopeText(request.resource.data.summary)
+        && awardScopeText(request.resource.data.question)
+        && awardScopeText(request.resource.data.timeline)
+        && request.resource.data.updatedAt is timestamp;
     }
 
     match /awards/{token} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (signedIn() && joiningAward(token)) || sharedAwardScope();
+    }
+
+    function actorName() {
+      return get(userPath()).data.get('displayName', '') != ''
+        ? get(userPath()).data.displayName
+        : (get(userPath()).data.get('email', '') != ''
+          ? get(userPath()).data.email
+          : 'TRI AI Admin');
+    }
+
+    function validOpenTask(data) {
+      return data.keys().hasOnly(['title', 'detail', 'status', 'createdAt', 'createdBy', 'createdByName', 'updatedAt'])
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() < 160
+        && data.detail is string
+        && data.detail.size() < 500
+        && data.status == 'open'
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.createdBy == request.auth.uid
+        && data.createdByName == actorName()
+        && data.createdByName.size() > 0
+        && data.createdByName.size() < 200;
+    }
+
+    function validProgrammeDone(data) {
+      return data.keys().hasOnly([
+          'title', 'detail', 'status', 'sourceKey', 'createdAt', 'createdBy', 'createdByName',
+          'updatedAt', 'doneAt', 'doneBy', 'doneByName'
+        ])
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() < 160
+        && data.detail is string
+        && data.detail.size() < 500
+        && data.status == 'done'
+        && data.sourceKey is string
+        && data.sourceKey.size() > 0
+        && data.sourceKey.size() < 120
+        && data.sourceKey.matches('^[A-Za-z0-9_:-]+$')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.doneAt is timestamp
+        && data.createdBy == request.auth.uid
+        && data.doneBy == request.auth.uid
+        && data.createdByName == actorName()
+        && data.doneByName == actorName()
+        && data.createdByName.size() > 0
+        && data.createdByName.size() < 200;
+    }
+
+    function validDoneTask(data) {
+      return resource.data.status == 'open'
+        && data.keys().hasOnly([
+          'title', 'detail', 'status', 'createdAt', 'createdBy', 'createdByName', 'updatedAt',
+          'doneAt', 'doneBy', 'doneByName'
+        ])
+        && data.title == resource.data.title
+        && data.detail == resource.data.detail
+        && data.createdAt == resource.data.createdAt
+        && data.createdBy == resource.data.createdBy
+        && data.createdByName == resource.data.createdByName
+        && data.status == 'done'
+        && data.doneAt is timestamp
+        && data.updatedAt is timestamp
+        && data.doneBy == request.auth.uid
+        && data.doneByName == actorName()
+        && data.doneByName.size() > 0
+        && data.doneByName.size() < 200
+        && data.diff(resource.data).affectedKeys().hasOnly(['status', 'doneAt', 'doneBy', 'doneByName', 'updatedAt']);
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && (
+        validOpenTask(request.resource.data)
+        || (validProgrammeDone(request.resource.data) && taskId == request.resource.data.sourceKey)
+      );
+      allow update: if isAdmin() && validDoneTask(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /timezones/{uid} {
+      allow get: if signedIn();
+      allow list: if isAdmin();
+      allow create, update: if self(uid)
+        && request.resource.data.keys().hasOnly(['timezone', 'updatedAt'])
+        && request.resource.data.timezone is string
+        && request.resource.data.timezone.size() > 1
+        && request.resource.data.timezone.size() < 80
+        && request.resource.data.timezone.matches('^[A-Za-z0-9+-]+(/[A-Za-z0-9_+-]+)*$')
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if false;
     }
   }
 }

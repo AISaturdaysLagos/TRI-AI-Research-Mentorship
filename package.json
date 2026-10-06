@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "emulators": "sh scripts/emulators.sh",
+    "drive-sync": "node scripts/drive-sync.mjs",
+    "seed:fixtures": "node scripts/seed-fixtures.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
     "firebase": "^11.10.0",
