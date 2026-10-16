@@ -38,6 +38,8 @@ export function blocksToMarkdown(blocks: DocBlock[]) {
 }
 
 const DOCUMENTS = "https://www.googleapis.com/auth/documents";
+const DRIVE = "https://www.googleapis.com/auth/drive";
+const DRIVE_API = "https://www.googleapis.com/drive/v3";
 
 let cached: { token: string; until: number } | null = null;
 
@@ -182,7 +184,19 @@ export function outputBlocks(projectTitle: string, item: Omit<OutputRecord, "id"
   ];
 }
 
-async function documentsToken() {
+function markdownToBlocks(markdown: string): DocBlock[] {
+  const blocks: DocBlock[] = [];
+  for (const raw of markdown.split(/\n+/)) {
+    const lineText = raw.trim();
+    if (!lineText) continue;
+    if (lineText.startsWith("# ")) blocks.push({ style: "h1", text: lineText.slice(2).trim() });
+    else if (lineText.startsWith("## ")) blocks.push({ style: "h2", text: lineText.slice(3).trim() });
+    else blocks.push({ style: "p", text: lineText.replace(/^\*\*([^*]+):\*\*\s*/, "$1: ") });
+  }
+  return blocks.length > 0 ? blocks : [{ style: "p", text: "—" }];
+}
+
+async function driveToken() {
   const auth = firebaseAuth();
   const current = auth?.currentUser;
   if (!auth || !current) return null;
@@ -190,6 +204,7 @@ async function documentsToken() {
   if (cached && cached.until > Date.now()) return cached.token;
   const provider = new GoogleAuthProvider();
   provider.addScope(DOCUMENTS);
+  provider.addScope(DRIVE);
   provider.setCustomParameters({
     login_hint: current.email ?? "",
     prompt: "consent",
@@ -280,29 +295,143 @@ async function ensureLocalDrive(body: Record<string, unknown>) {
   };
 }
 
+async function driveFetch(token: string, url: string, init?: RequestInit) {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail.slice(0, 200) || "Could not update Google Drive.");
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function createDriveFolder(token: string, name: string, parentId: string) {
+  const created = (await driveFetch(token, `${DRIVE_API}/files?fields=id,name,webViewLink`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: parentId ? [parentId] : undefined,
+    }),
+  })) as { id: string; name: string; webViewLink?: string };
+  return {
+    id: created.id,
+    name: created.name || name,
+    url: created.webViewLink || `https://drive.google.com/drive/folders/${created.id}`,
+    kind: "folder" as const,
+  };
+}
+
+async function createDriveDocument(token: string, name: string, parentId: string, blocks: DocBlock[]) {
+  const created = (await driveFetch(token, `${DRIVE_API}/files?fields=id,name,webViewLink`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.document",
+      parents: parentId ? [parentId] : undefined,
+    }),
+  })) as { id: string; name: string; webViewLink?: string };
+  await replaceGoogleDoc(token, created.id, blocks);
+  return {
+    id: created.id,
+    name: created.name || name,
+    url: created.webViewLink || `https://docs.google.com/document/d/${created.id}/edit`,
+    kind: "document" as const,
+  };
+}
+
+async function ensureCloudDrive(input: {
+  title: string;
+  folderId: string;
+  parentId: string;
+  people: { name: string }[];
+  documents: { name: string; markdown: string }[];
+}) {
+  const token = await driveToken();
+  if (!token) return null;
+  const createdFiles: ProjectDriveFile[] = [];
+  let folderId = input.folderId;
+  let folderName = input.title;
+  let folderUrl = folderId ? `https://drive.google.com/drive/folders/${folderId}` : "";
+  if (!folderId) {
+    const folder = await createDriveFolder(token, input.title, input.parentId);
+    folderId = folder.id;
+    folderName = folder.name;
+    folderUrl = folder.url;
+  }
+  for (const person of input.people) {
+    if (!person.name.trim()) continue;
+    createdFiles.push(await createDriveFolder(token, person.name, folderId));
+  }
+  for (const document of input.documents) {
+    if (!document.name.trim()) continue;
+    createdFiles.push(
+      await createDriveDocument(token, document.name, folderId, markdownToBlocks(document.markdown || "")),
+    );
+  }
+  return {
+    id: folderId,
+    name: folderName,
+    url: folderUrl || `https://drive.google.com/drive/folders/${folderId}`,
+    files: createdFiles,
+  };
+}
+
+async function ensureDrive(body: {
+  projectId: string;
+  title: string;
+  folderId: string;
+  parentId: string;
+  people: { name: string }[];
+  documents: { name: string; markdown: string }[];
+}) {
+  if (import.meta.env.DEV) {
+    try {
+      const local = await ensureLocalDrive(body);
+      if (local.drive?.id) return local.drive;
+    } catch {
+      // Fall through to the signed-in Google account on Pages and when local sync is down.
+    }
+  }
+  return ensureCloudDrive(body);
+}
+
 export async function updateFiledDocument(projectId: string, name: string, blocks: DocBlock[]) {
   let file = filedDocument(projectId, name);
-  if (!file && import.meta.env.DEV) {
+  if (!file) {
     const drive = projectDrive(projectId);
-    const created = await ensureLocalDrive({
+    const created = await ensureDrive({
       projectId,
       title: drive?.name || "Project",
       folderId: drive?.id || "",
       parentId: PROGRAMME_RETURNS_FOLDER_ID,
+      people: [],
       documents: [{ name, markdown: blocksToMarkdown(blocks) }],
     });
-    if (created.drive?.id) {
-      rememberProjectFolder(projectId, created.drive, created.drive.files ?? []);
+    if (created?.id) {
+      rememberProjectFolder(projectId, created, created.files ?? []);
     }
     file = filedDocument(projectId, name);
     if (file) return "updated" as const;
+    return "skipped" as const;
   }
-  if (!file) return "skipped" as const;
   if (import.meta.env.DEV) {
-    await syncLocalDocument(file.id, blocks);
-    return "updated" as const;
+    try {
+      await syncLocalDocument(file.id, blocks);
+      return "updated" as const;
+    } catch {
+      // Fall through to the Docs API with the signed-in Google account.
+    }
   }
-  const token = await documentsToken();
+  const token = await driveToken();
   if (!token) return "skipped" as const;
   await replaceGoogleDoc(token, file.id, blocks);
   return "updated" as const;
@@ -319,8 +448,7 @@ export async function ensureProjectDrive(input: {
   const people = input.people.filter((person) => person.name.trim() && !names.has(personFolderName(person.name, person.role)));
   const documents = input.documents.filter((item) => item.name && !names.has(item.name));
   if (drive && people.length === 0 && documents.length === 0) return drive;
-  if (!import.meta.env.DEV) return drive;
-  const created = await ensureLocalDrive({
+  const created = await ensureDrive({
     projectId: input.projectId,
     title: input.title,
     folderId: drive?.id || "",
@@ -328,9 +456,9 @@ export async function ensureProjectDrive(input: {
     people: people.map((person) => ({ name: personFolderName(person.name, person.role) })),
     documents,
   });
-  if (!created.drive?.id) return drive;
-  rememberProjectFolder(input.projectId, created.drive, created.drive.files ?? []);
-  rememberDriveFiles(input.projectId, created.drive.files ?? []);
+  if (!created?.id) return drive;
+  rememberProjectFolder(input.projectId, created, created.files ?? []);
+  rememberDriveFiles(input.projectId, created.files ?? []);
   return projectDrive(input.projectId);
 }
 

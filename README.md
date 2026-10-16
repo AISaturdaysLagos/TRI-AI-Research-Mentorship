@@ -66,7 +66,9 @@ One TRI AI Saturdays Award can include several researchers. A researcher belongs
 
 ## GitHub Pages demo
 
-The published site uses Firebase project `tri-ai-research-demo`. The same demo accounts and records are loaded there with `npm run seed:demo`. Sign-in, projects, meetings, and tasks run against that project. Creating or updating a Google Doc still needs the local Drive sync.
+The published site uses Firebase project `tri-ai-research-demo`. The same demo accounts and records are loaded there with `npm run seed:demo`. Sign-in, projects, meetings, and tasks run against that project.
+
+Creating or updating Google Docs on GitHub Pages uses the signed-in Google account (Drive and Docs APIs). Sign in with Google, not only a fixture email/password account. That Google account needs Editor access on the programme Drive folder. Locally, `npm run drive-sync` remains available as a development fallback.
 
 ## Scripts
 
