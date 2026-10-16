@@ -24,6 +24,7 @@ import {
   listSeniorProfiles,
   projectProposalIds,
 } from "../lib/records";
+import { userFacingError } from "../lib/errors";
 
 async function currentNotices(uid: string, role: string): Promise<AttentionNotice[]> {
   if (role === "researcher") {
@@ -88,13 +89,13 @@ export function AttentionNotices() {
         currentNotices(uid, role)
           .then((notices) => syncNotifications(uid, notices))
           .catch((err: unknown) => {
-            if (!cancel) setError(err instanceof Error ? err.message : "Could not save notifications.");
+            if (!cancel) setError(userFacingError(err, "Could not save notifications."));
           });
       }, 40);
     };
 
     const fail = (err: { message?: string }) => {
-      if (!cancel) setError(err.message || "Could not load notifications.");
+      if (!cancel) setError(userFacingError(err, "Could not load notifications."));
     };
     const stops = [watchNotifications(uid, (next) => {
       if (!cancel) setItems(next);
@@ -166,7 +167,7 @@ export function AttentionNotices() {
       await closeNotification(user.uid, id);
     } catch (err) {
       setItems(previous);
-      setError(err instanceof Error ? err.message : "Could not close this notification.");
+      setError(userFacingError(err, "Could not close this notification."));
     }
   }
 

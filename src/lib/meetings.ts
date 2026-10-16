@@ -12,6 +12,7 @@ import {
 } from "firebase/firestore";
 import { firebaseAuth, firestore } from "./firebase";
 import { formatZonedWhen } from "./timezones";
+import { userFacingError } from "./errors";
 
 export type MeetingPerson = { uid: string; name: string; email: string };
 
@@ -150,8 +151,12 @@ async function reserveScopingMeeting(
       });
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "";
-    if (message.includes("PERMISSION_DENIED") || message.includes("evaluation error")) {
+    const raw = err instanceof Error ? err.message : "";
+    const code =
+      err && typeof err === "object" && "code" in err && typeof (err as { code: unknown }).code === "string"
+        ? (err as { code: string }).code
+        : "";
+    if (code === "permission-denied" || /PERMISSION_DENIED|evaluation error/i.test(raw)) {
       throw new Error(scopingMeetingTaken);
     }
     throw err;
@@ -186,7 +191,7 @@ export async function ensureScopingSlots(meetings: MeetingRow[], uid: string) {
           });
         });
       } catch (err) {
-        failures.push(err instanceof Error ? err.message : "Could not record the scoping meeting.");
+        failures.push(userFacingError(err, "Could not record the scoping meeting."));
       }
     }),
   );

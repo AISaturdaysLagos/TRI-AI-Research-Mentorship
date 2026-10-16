@@ -295,6 +295,25 @@ async function ensureLocalDrive(body: Record<string, unknown>) {
   };
 }
 
+function driveApiMessage(detail: string, status: number) {
+  try {
+    const parsed = JSON.parse(detail) as { error?: { message?: string; status?: string } };
+    const message = parsed.error?.message?.trim() ?? "";
+    if (/has not been used in project|is disabled|API has not been used/i.test(message)) {
+      return "Google Drive API is not enabled for this Firebase project.";
+    }
+    if (/File not found|not found/i.test(message) || status === 404) {
+      return "Could not find the programme Drive folder. Check Editor access on that folder.";
+    }
+    if (/insufficient|permission|forbidden|ACCESS_TOKEN_SCOPE/i.test(message) || status === 403) {
+      return "Google Drive did not allow that change. Check Editor access and Drive scopes.";
+    }
+  } catch {
+    // Fall through to the generic line.
+  }
+  return "Could not update Google Drive.";
+}
+
 async function driveFetch(token: string, url: string, init?: RequestInit) {
   const response = await fetch(url, {
     ...init,
@@ -305,14 +324,16 @@ async function driveFetch(token: string, url: string, init?: RequestInit) {
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(detail.slice(0, 200) || "Could not update Google Drive.");
+    throw new Error(driveApiMessage(detail, response.status));
   }
   if (response.status === 204) return null;
   return response.json();
 }
 
+const DRIVE_CREATE = `${DRIVE_API}/files?fields=id,name,webViewLink&supportsAllDrives=true`;
+
 async function createDriveFolder(token: string, name: string, parentId: string) {
-  const created = (await driveFetch(token, `${DRIVE_API}/files?fields=id,name,webViewLink`, {
+  const created = (await driveFetch(token, DRIVE_CREATE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -330,7 +351,7 @@ async function createDriveFolder(token: string, name: string, parentId: string) 
 }
 
 async function createDriveDocument(token: string, name: string, parentId: string, blocks: DocBlock[]) {
-  const created = (await driveFetch(token, `${DRIVE_API}/files?fields=id,name,webViewLink`, {
+  const created = (await driveFetch(token, DRIVE_CREATE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

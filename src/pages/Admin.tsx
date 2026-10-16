@@ -9,6 +9,7 @@ import { useAuth } from "../lib/auth";
 import { named, seniorWelcomeEmail } from "../lib/email";
 import { listDirectory, listProjects, listProposals, listSeniorProfiles, updateMentorPool } from "../lib/records";
 import type { MentorAvailability } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 const links: { to: string; label: string; icon: IconName; end?: boolean; adminOnly?: boolean }[] = [
   { to: "/admin", label: "Overview", icon: "overview", end: true },
@@ -130,7 +131,7 @@ export function AdminProposalsPage() {
         );
         setRows((items as ProposalRow[]).filter((row) => !projectProposalIds.has(row.id)));
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load proposals."))
+      .catch((err: unknown) => setError(userFacingError(err, "Could not load proposals.")))
       .finally(() => setLoaded(true));
   }, []);
 
@@ -228,7 +229,7 @@ export function AdminMentorsPage() {
         setRows(items as MentorRow[]);
         setDirectory(people);
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load the Senior Researcher pool."))
+      .catch((err: unknown) => setError(userFacingError(err, "Could not load the Senior Researcher pool.")))
       .finally(() => setLoaded(true));
   }, [profile?.role]);
 
@@ -237,7 +238,7 @@ export function AdminMentorsPage() {
     try {
       await updateMentorPool(row.id, availability, poolStatus);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update the Senior Researcher.");
+      setError(userFacingError(err, "Could not update the Senior Researcher."));
     }
   }
 

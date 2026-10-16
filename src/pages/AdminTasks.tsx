@@ -22,6 +22,7 @@ import {
 } from "../lib/tasks";
 import { formatZonedWhen, PROGRAMME_ZONE } from "../lib/timezones";
 import { listProjectActivities, type ProjectActivity } from "../lib/workspace";
+import { userFacingError } from "../lib/errors";
 
 function when(value: Date | null) {
   return value ? formatZonedWhen(value, PROGRAMME_ZONE) : "the time is still being recorded";
@@ -231,7 +232,7 @@ export function AdminTasksPage() {
         });
       })
       .catch((err: unknown) => {
-        if (!cancel) setError(err instanceof Error ? err.message : "Could not load programme tasks.");
+        if (!cancel) setError(userFacingError(err, "Could not load programme tasks."));
       });
     return () => {
       cancel = true;
@@ -305,7 +306,7 @@ export function AdminTasksPage() {
       setTitle("");
       setDetail("");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not add the task.");
+      setError(userFacingError(err, "Could not add the task."));
     } finally {
       setBusy("");
     }
@@ -318,7 +319,7 @@ export function AdminTasksPage() {
     try {
       await completeTask(task.id, user.uid, actorName);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not mark the task done.");
+      setError(userFacingError(err, "Could not mark the task done."));
     } finally {
       setBusy("");
     }
@@ -337,7 +338,7 @@ export function AdminTasksPage() {
         actorName,
       });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not mark the task done.");
+      setError(userFacingError(err, "Could not mark the task done."));
     } finally {
       setBusy("");
     }

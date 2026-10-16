@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { introductionEmail, matchRequestEmail, named, type EmailDraft } from "../lib/email";
 import { introduceMatch, listDirectory, listMatches, listProjects, listProposals, listSeniorProfiles, sendMatchOpportunity } from "../lib/records";
 import { EMPTY_FIT, FIT_DIMENSIONS, type FitScores } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 type ProposalRow = Record<string, unknown> & { id: string };
 type MentorRow = {
@@ -81,7 +82,7 @@ export function AdminMatchingPage() {
         setMatches(matchRows as MatchRow[]);
         setSelectedId((current) => current || ready[0]?.id || "");
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load matching."))
+      .catch((err: unknown) => setError(userFacingError(err, "Could not load matching.")))
       .finally(() => setLoaded(true));
   }, [profile?.role]);
 
@@ -168,7 +169,7 @@ export function AdminMatchingPage() {
       setFit(EMPTY_FIT);
       setMessage("Sent.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send the opportunity.");
+      setError(userFacingError(err, "Could not send the opportunity."));
     } finally {
       setBusy(false);
     }
@@ -206,7 +207,7 @@ export function AdminMatchingPage() {
       );
       setMessage(`Introduced ${match.mentorName}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not record the introduction.");
+      setError(userFacingError(err, "Could not record the introduction."));
     } finally {
       setBusy(false);
     }

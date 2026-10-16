@@ -22,6 +22,7 @@ import {
 } from "../lib/workspace";
 import { Icon } from "./Icon";
 import { Loader } from "./Loader";
+import { userFacingError } from "../lib/errors";
 
 const STATUSES = [
   ["todo", "To do"],
@@ -124,7 +125,7 @@ export function ProjectBoard({
         );
       })
       .catch((err: unknown) => {
-        if (!cancel) setError(err instanceof Error ? err.message : "Could not load this page.");
+        if (!cancel) setError(userFacingError(err, "Could not load this page."));
       });
     return () => {
       cancel = true;
@@ -164,7 +165,7 @@ export function ProjectBoard({
     try {
       await saveWorkTask(projectId, task.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save this task.");
+      setError(userFacingError(err, "Could not save this task."));
       await reloadTasks();
     } finally {
       setBusy("");
@@ -182,7 +183,7 @@ export function ProjectBoard({
       setDraft("");
       await reloadTasks();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add this task.");
+      setError(userFacingError(err, "Could not add this task."));
     } finally {
       setBusy("");
     }
@@ -196,7 +197,7 @@ export function ProjectBoard({
       setOpenTask(null);
       await reloadTasks();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete this task.");
+      setError(userFacingError(err, "Could not delete this task."));
     } finally {
       setBusy("");
     }
@@ -211,7 +212,7 @@ export function ProjectBoard({
       setOpenMeeting(null);
       setReplyNote("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save your reply.");
+      setError(userFacingError(err, "Could not save your reply."));
     } finally {
       setBusy("");
     }

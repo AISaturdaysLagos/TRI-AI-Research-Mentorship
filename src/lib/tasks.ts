@@ -8,6 +8,7 @@ import {
   updateDoc,
   type Timestamp,
 } from "firebase/firestore";
+import { userFacingError } from "./errors";
 import { firestore } from "./firebase";
 
 export type ProgrammeTask = {
@@ -63,7 +64,7 @@ export function watchTasks(onTasks: (tasks: ProgrammeTask[]) => void, onError: (
       tasks.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
       onTasks(tasks);
     },
-    (err) => onError(err.message),
+    (err) => onError(userFacingError(err, "Could not load programme tasks.")),
   );
 }
 

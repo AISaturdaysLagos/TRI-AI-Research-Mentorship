@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import type { AttentionNotice } from "./notices";
 import { listDismissedNotices } from "./records";
+import { userFacingError } from "./errors";
 import { firestore } from "./firebase";
 
 function notificationRef(uid: string, noticeId: string) {
@@ -68,7 +69,7 @@ export function watchNotifications(uid: string, onItems: (items: AttentionNotice
         }));
       onItems(items);
     },
-    (err) => onError(err.message),
+    (err) => onError(userFacingError(err, "Could not load notifications.")),
   );
 }
 

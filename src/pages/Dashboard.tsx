@@ -22,6 +22,7 @@ import {
   respondToMatch,
 } from "../lib/records";
 import { MATCH_RESPONSES, type MatchResponse } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 type Person = { uid?: string; name?: string };
 
@@ -411,7 +412,7 @@ export function DashboardPage() {
         .catch((err: unknown) => {
           setRows([]);
           setProjects([]);
-          setError(err instanceof Error ? err.message : "Could not load match requests.");
+          setError(userFacingError(err, "Could not load match requests."));
         })
         .finally(() => setLoaded(true));
     }
@@ -448,7 +449,7 @@ export function DashboardPage() {
         ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save your response.");
+      setError(userFacingError(err, "Could not save your response."));
     }
   }
 

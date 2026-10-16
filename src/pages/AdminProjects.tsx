@@ -29,6 +29,7 @@ import {
   markProjectScoped,
   revokeProjectInvite,
 } from "../lib/records";
+import { userFacingError } from "../lib/errors";
 
 type Person = { uid?: string; name?: string };
 
@@ -133,7 +134,7 @@ function InviteForm({
       await onSubmit(guests);
       setPeople([{ name: "", email: "" }]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not prepare the invite.");
+      setError(userFacingError(err, "Could not prepare the invite."));
     }
   }
 
@@ -380,10 +381,10 @@ export function AdminProjectsPage() {
           { name: "Project Charter", markdown: blocksToMarkdown(charterBlocks(title, { scope: "", roles: "", cadence: "", resources: "", integrity: "", authorship: "", release: "" }, false)) },
           { name: "Scoping notes", markdown: blocksToMarkdown(scopingNotesBlocks({ title })) },
         ],
-      }).catch(() => undefined);
+      }).catch((err: unknown) => setError(userFacingError(err, "Could not create the Google Drive folder.")));
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add this TRI AI Saturdays Award project.");
+      setError(userFacingError(err, "Could not add this TRI AI Saturdays Award project."));
     } finally {
       setBusy("");
     }
@@ -425,9 +426,9 @@ export function AdminProjectsPage() {
           role: role === "senior_researcher" ? "Senior Researcher" as const : "Researcher" as const,
         })),
         documents: [],
-      }).catch(() => undefined);
+      }).catch((err: unknown) => setError(userFacingError(err, "Could not update the Google Drive folder.")));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create the invite.");
+      setError(userFacingError(err, "Could not create the invite."));
     } finally {
       setBusy("");
     }
@@ -442,7 +443,7 @@ export function AdminProjectsPage() {
       await reload();
       setNotice(`${project.title || "Project"} is scoped.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not mark this project scoped.");
+      setError(userFacingError(err, "Could not mark this project scoped."));
     } finally {
       setBusy("");
     }
@@ -457,7 +458,7 @@ export function AdminProjectsPage() {
       await reload();
       setNotice(`Project Charter recorded for ${project.title || "this project"}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not record the Project Charter.");
+      setError(userFacingError(err, "Could not record the Project Charter."));
     } finally {
       setBusy("");
     }
@@ -476,7 +477,7 @@ export function AdminProjectsPage() {
       await reload();
       setNotice(`${project.title || "Project"} is now active.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not make this project active.");
+      setError(userFacingError(err, "Could not make this project active."));
     } finally {
       setBusy("");
     }
@@ -491,7 +492,7 @@ export function AdminProjectsPage() {
       await reload();
       setNotice("Invite link closed.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not close the invite.");
+      setError(userFacingError(err, "Could not close the invite."));
     } finally {
       setBusy("");
     }

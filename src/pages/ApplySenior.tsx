@@ -5,6 +5,7 @@ import { useAuth } from "../lib/auth";
 import { named, seniorAppliedEmail, type EmailDraft } from "../lib/email";
 import { getSeniorProfile, saveSeniorProfile, seniorDraftFromRecord } from "../lib/records";
 import { EMPTY_SENIOR, type MentorAvailability, type SeniorProfileDraft } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 const availability: MentorAvailability[] = [
   "available",
@@ -65,7 +66,7 @@ export function ApplySeniorPage() {
         }),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save.");
+      setError(userFacingError(err, "Could not save."));
     } finally {
       setBusy(false);
     }

@@ -30,6 +30,7 @@ import {
   type MeetingRow,
 } from "../lib/meetings";
 import { listMatches, listProjects, listProposals } from "../lib/records";
+import { userFacingError } from "../lib/errors";
 
 type DirectoryPerson = MeetingPerson & { role?: string };
 
@@ -121,7 +122,7 @@ function AdminMeetingCard({
       setEditing(false);
       await onChanged("Meeting updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update this meeting.");
+      setError(userFacingError(err, "Could not update this meeting."));
     }
   }
 
@@ -132,7 +133,7 @@ function AdminMeetingCard({
       setConfirming(false);
       await onChanged("Meeting cancelled.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not cancel this meeting.");
+      setError(userFacingError(err, "Could not cancel this meeting."));
     }
   }
 
@@ -271,7 +272,7 @@ export function AdminMeetingsPage() {
   useEffect(() => {
     if (profile?.role !== "admin" || !user) return;
     void reload().catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : "Could not load meetings.");
+      setError(userFacingError(err, "Could not load meetings."));
       setLoaded(true);
     });
   }, [profile?.role, user]);
@@ -438,7 +439,7 @@ export function AdminMeetingsPage() {
       setCreating(false);
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save this meeting.");
+      setError(userFacingError(err, "Could not save this meeting."));
     } finally {
       setBusy(false);
     }
@@ -462,7 +463,7 @@ export function AdminMeetingsPage() {
             onChange={(zone) => {
               setZones((current) => ({ ...current, [user.uid]: zone }));
               void saveTimezone(user.uid, zone).catch((err: unknown) => {
-                setError(err instanceof Error ? err.message : "Could not save your time zone.");
+                setError(userFacingError(err, "Could not save your time zone."));
               });
             }}
           />

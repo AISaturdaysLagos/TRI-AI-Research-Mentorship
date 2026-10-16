@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState, type ComponentType } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { workspacePath, type SelfServeRole } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 function LocalFixtures() {
   const [Panel, setPanel] = useState<ComponentType | null>(null);
@@ -52,7 +53,7 @@ export function LoginPage() {
       if (mode === "create") await registerWithPassword(email, password);
       else await signInWithPassword(email, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setError(userFacingError(err, "Sign-in failed."));
     } finally {
       setBusy(false);
     }
@@ -64,7 +65,7 @@ export function LoginPage() {
     try {
       await signInWithGoogle();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Google sign-in failed.");
+      setError(userFacingError(err, "Google sign-in failed."));
     } finally {
       setBusy(false);
     }
@@ -77,7 +78,7 @@ export function LoginPage() {
     try {
       await chooseRole(role, name);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save your role.");
+      setError(userFacingError(err, "Could not save your role."));
     } finally {
       setBusy(false);
     }

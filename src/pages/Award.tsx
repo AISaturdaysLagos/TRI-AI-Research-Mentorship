@@ -6,6 +6,7 @@ import { firebaseConfigured } from "../lib/firebase";
 import { scopingNotesBlocks, updateFiledDocument } from "../lib/driveDocs";
 import { getAward, listResearcherProposals, projectMembership, saveAwardScope } from "../lib/records";
 import type { ProposalDraft } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 type AwardPerson = { uid?: string; name?: string };
 
@@ -156,7 +157,7 @@ export function AwardPage() {
       }
       setMessage(`Saved.${driveNote}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save.");
+      setError(userFacingError(err, "Could not save."));
     }
   }
 

@@ -5,6 +5,7 @@ import { HealthMark } from "../components/StatusChip";
 import { Loader } from "../components/Loader";
 import { useAuth } from "../lib/auth";
 import { listProjects, listProposals } from "../lib/records";
+import { userFacingError } from "../lib/errors";
 
 type ProposalRow = { id: string; title?: string; status?: string; route?: string; researchArea?: string };
 type ProjectRow = {
@@ -52,7 +53,7 @@ export function AdminReportsPage() {
         setProposals(proposalRows as ProposalRow[]);
         setProjects(projectRows as ProjectRow[]);
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load reports."))
+      .catch((err: unknown) => setError(userFacingError(err, "Could not load reports.")))
       .finally(() => setLoaded(true));
   }, [profile?.role]);
 

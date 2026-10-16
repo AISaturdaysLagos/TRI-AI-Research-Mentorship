@@ -31,6 +31,7 @@ import {
   type MeetingRow,
 } from "../lib/meetings";
 import { listAdmins, listMatches, listMentorMatches, listParticipantProjects, listProgrammeIntroductions } from "../lib/records";
+import { userFacingError } from "../lib/errors";
 
 function MeetingCard({
   meeting,
@@ -102,7 +103,7 @@ function MeetingCard({
         }),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save your reply.");
+      setError(userFacingError(err, "Could not save your reply."));
     }
   }
 
@@ -125,7 +126,7 @@ function MeetingCard({
       setNote(suggestedNote);
       setSuggesting(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save your suggested time.");
+      setError(userFacingError(err, "Could not save your suggested time."));
     }
   }
 
@@ -151,7 +152,7 @@ function MeetingCard({
       setEditing(false);
       await onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not update this meeting.");
+      setError(userFacingError(err, "Could not update this meeting."));
     }
   }
 
@@ -162,7 +163,7 @@ function MeetingCard({
       setConfirming(false);
       await onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not cancel this meeting.");
+      setError(userFacingError(err, "Could not cancel this meeting."));
     }
   }
 
@@ -403,7 +404,7 @@ function ResearcherMeetingForm({
         setMatches(mentorMatches);
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Could not load meetings you can set.");
+        setError(userFacingError(err, "Could not load meetings you can set."));
       });
   }, [uid]);
 
@@ -607,7 +608,7 @@ function ResearcherMeetingForm({
       );
       await onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save this meeting.");
+      setError(userFacingError(err, "Could not save this meeting."));
     } finally {
       setBusy(false);
     }
@@ -783,7 +784,7 @@ export function MeetingsPage() {
     if (!user || !profile) return;
     if (profile.role !== "researcher" && profile.role !== "senior_researcher") return;
     void reload(user.uid, profile.role).catch((err: unknown) => {
-      setError(err instanceof Error ? err.message : "Could not load meetings.");
+      setError(userFacingError(err, "Could not load meetings."));
       setLoaded(true);
     });
   }, [profile, user]);
@@ -846,7 +847,7 @@ export function MeetingsPage() {
               onChange={(zone) => {
                 setZones((current) => ({ ...current, [uid]: zone }));
                 void saveTimezone(uid, zone).catch((err: unknown) => {
-                  setError(err instanceof Error ? err.message : "Could not save your time zone.");
+                  setError(userFacingError(err, "Could not save your time zone."));
                 });
               }}
             />

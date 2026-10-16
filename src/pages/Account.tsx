@@ -21,6 +21,7 @@ import {
   type ResearcherProfileDraft,
   type SeniorProfileDraft,
 } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 const availability: MentorAvailability[] = [
   "available",
@@ -117,7 +118,7 @@ export function AccountPage() {
       await saveTimezone(user.uid, zone);
       setMessage("Account saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save.");
+      setError(userFacingError(err, "Could not save."));
     } finally {
       setBusy(false);
     }

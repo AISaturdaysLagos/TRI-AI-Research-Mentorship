@@ -5,6 +5,7 @@ import { useAuth } from "../lib/auth";
 import { firebaseConfigured } from "../lib/firebase";
 import { acceptProjectInvite, getProjectInvite, projectMembership } from "../lib/records";
 import type { Role } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 type InviteRecord = {
   id: string;
@@ -73,7 +74,7 @@ export function JoinProjectPage() {
       setMember(true);
       setMessage(result === "already" ? "You are already on this project." : "You have joined this project.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not join this project.");
+      setError(userFacingError(err, "Could not join this project."));
     } finally {
       setBusy(false);
     }

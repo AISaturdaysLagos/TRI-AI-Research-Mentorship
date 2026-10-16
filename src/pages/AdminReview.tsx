@@ -31,6 +31,7 @@ import {
   type ReviewRecord,
   type ReviewScores,
 } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 const groups: { title: string; keys: (keyof ProposalDraft)[] }[] = [
   {
@@ -95,7 +96,7 @@ export function AdminReviewPage() {
         setProposal(item);
         if (!item) setError("This proposal is not available.");
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load the proposal."));
+      .catch((err: unknown) => setError(userFacingError(err, "Could not load the proposal.")));
     getReview(id)
       .then((review) => {
         if (!review) return;
@@ -187,7 +188,7 @@ export function AdminReviewPage() {
       }
       setMessage("Review saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save the review.");
+      setError(userFacingError(err, "Could not save the review."));
     } finally {
       setBusy(false);
     }
@@ -214,7 +215,7 @@ export function AdminReviewPage() {
       setExisting(true);
       setMessage("Decision recorded.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not record the decision.");
+      setError(userFacingError(err, "Could not record the decision."));
     } finally {
       setBusy(false);
     }

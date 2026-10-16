@@ -48,6 +48,7 @@ import {
   type ResourceRecord,
   type WorkspaceProject,
 } from "../lib/workspace";
+import { userFacingError } from "../lib/errors";
 
 function names(people?: { name?: string }[]) {
   const list = (people ?? []).map((person) => person.name).filter(Boolean);
@@ -210,13 +211,13 @@ export function ProjectWorkspacePage() {
         return saveProjectDrive(id, drive);
       }
       return undefined;
-    }).catch(() => undefined);
+    }).catch((err: unknown) => setError(userFacingError(err, "Could not create the Google Drive folder.")));
   }
 
   useEffect(() => {
     if (!id || !user || !profile) return;
     setNotice("");
-    void reload().catch((err: unknown) => setError(err instanceof Error ? err.message : "Could not load this project."));
+    void reload().catch((err: unknown) => setError(userFacingError(err, "Could not load this project.")));
   }, [id, user, profile]);
 
   async function run(key: string, action: () => Promise<void>, done: string, sync?: () => Promise<"updated" | "skipped">) {
@@ -237,7 +238,7 @@ export function ProjectWorkspacePage() {
       await reload();
       setNotice(done + suffix);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save this change.");
+      setError(userFacingError(err, "Could not save this change."));
     } finally {
       setBusy("");
     }

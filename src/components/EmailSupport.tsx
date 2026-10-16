@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { openLocalEmail, type EmailDraft } from "../lib/email";
+import { userFacingError } from "../lib/errors";
 
 function line(people: EmailDraft["to"]) {
   if (people.length === 0) return "Add the address in your email app.";
@@ -48,7 +49,7 @@ export function EmailSupport({ draft }: { draft: EmailDraft | null }) {
               );
             })
             .catch((err: unknown) => {
-              setError(err instanceof Error ? err.message : "Could not open the email.");
+              setError(userFacingError(err, "Could not open the email."));
             });
         }}
       >

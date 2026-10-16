@@ -16,6 +16,7 @@ import {
   writeLocalProposal,
 } from "../lib/records";
 import { EMPTY_PROPOSAL, PROPOSAL_LABELS, PROPOSAL_STEPS, type ProposalDraft } from "../types/domain";
+import { userFacingError } from "../lib/errors";
 
 type SavedProposal = ProposalDraft & { id: string; status?: string; route?: string };
 
@@ -169,7 +170,7 @@ export function ApplyResearcherPage() {
         );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save.");
+      setError(userFacingError(err, "Could not save."));
     } finally {
       setBusy(false);
     }
