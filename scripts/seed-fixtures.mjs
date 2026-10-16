@@ -45,15 +45,6 @@ async function authAccount(email) {
   return existing.localId;
 }
 
-async function deleteDocument(path) {
-  const url = `${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/${path}`;
-  const response = await fetch(url, { method: "DELETE", headers: { Authorization: "Bearer owner" } });
-  if (!response.ok && response.status !== 404) {
-    const detail = await response.text();
-    throw new Error(`Could not delete ${path}: ${response.status} ${detail.slice(0, 300)}`);
-  }
-}
-
 async function writeDocument(path, data) {
   const url = `${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/${path}`;
   const response = await fetch(url, {
@@ -70,15 +61,27 @@ async function writeDocument(path, data) {
   }
 }
 
+async function clearEmulator() {
+  const authClear = await fetch(`${authHost}/emulator/v1/projects/${projectId}/accounts`, { method: "DELETE" });
+  if (!authClear.ok && authClear.status !== 404) {
+    throw new Error(`Could not clear Auth emulator: ${authClear.status}`);
+  }
+  const storeClear = await fetch(
+    `${firestoreHost}/emulator/v1/projects/${projectId}/databases/(default)/documents`,
+    { method: "DELETE" },
+  );
+  if (!storeClear.ok && storeClear.status !== 404) {
+    throw new Error(`Could not clear Firestore emulator: ${storeClear.status}`);
+  }
+}
+
 try {
+  await clearEmulator();
   const uids = {};
   for (const account of fixtureAccounts) {
     uids[account.key] = await authAccount(account.email);
   }
   const documents = buildFixtureDocuments(uids);
-  for (const path of ["awards/saturdays-clinic", "proposals/fixture-clinic-speech"]) {
-    await deleteDocument(path);
-  }
   for (const document of documents) {
     await writeDocument(document.path, document.data);
   }

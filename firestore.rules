@@ -225,10 +225,10 @@ service cloud.firestore {
     }
 
     match /projects/{id} {
-      allow read: if resource.data.publicShowcase == true
-        || resource.data.status in ['active', 'scoping', 'internal_review']
+      allow read: if resource.data.get('publicShowcase', false) == true
+        || resource.data.get('status', '') in ['active', 'scoping', 'internal_review']
         || isAdmin()
-        || (signedIn() && request.auth.uid in resource.data.participantIds);
+        || (signedIn() && request.auth.uid in resource.data.get('participantIds', []));
       allow create, delete: if isAdmin();
       allow update: if (isAdmin() && projectProgressOk(id))
         || (signedIn()

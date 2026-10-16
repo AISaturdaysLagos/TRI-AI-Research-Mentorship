@@ -70,6 +70,27 @@ The published site uses Firebase project `tri-ai-research-demo`. The same demo a
 
 Creating or updating Google Docs on GitHub Pages uses the signed-in Google account (Drive and Docs APIs). Sign in with Google, not only a fixture email/password account. That Google account needs Editor access on the programme Drive folder. Locally, `npm run drive-sync` remains available as a development fallback.
 
+## E2E tests
+
+Playwright covers the public pages, each role’s seeded screens, and a few write chains (proposal matching, project work, invite join). Tests use the Auth and Firestore emulators. Creating a Google Doc is out of scope.
+
+After `npm install`, Chromium is installed for Playwright. If browsers are missing, run `npx playwright install chromium`.
+
+With emulators already running:
+
+```bash
+npm run seed:fixtures
+npm run test:e2e
+```
+
+Or start emulators, seed, and run in one step (ports 9099 and 8080 must be free):
+
+```bash
+npm run test:e2e:ci
+```
+
+GitHub Actions runs `test:e2e:ci` on pull requests and pushes to `main`.
+
 ## Scripts
 
 | Command | Purpose |
@@ -78,5 +99,8 @@ Creating or updating Google Docs on GitHub Pages uses the signed-in Google accou
 | `npm run emulators` | Firebase Auth and Firestore emulators |
 | `npm run seed:fixtures` | Create the local test accounts and sample records |
 | `npm run seed:demo` | Load those same accounts and records into the demo Firebase project |
+| `npm run test:e2e` | Run Playwright against the local app (expects emulators) |
+| `npm run test:e2e:ui` | Playwright UI mode |
+| `npm run test:e2e:ci` | Emulators, seed, then Playwright |
 | `npm run build` | Typecheck and production build into `dist` |
 | `npm run preview` | Serve the production build locally |
