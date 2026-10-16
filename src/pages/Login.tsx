@@ -104,9 +104,12 @@ export function LoginPage() {
                 Name
                 <input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required />
               </label>
-              <div className="role-pick">
+              <fieldset className="role-pick">
+                <legend className="sr-only">How you are joining</legend>
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={role === "researcher"}
                   className={role === "researcher" ? "is-selected" : ""}
                   onClick={() => setRole("researcher")}
                 >
@@ -117,6 +120,8 @@ export function LoginPage() {
                 </button>
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={role === "senior_researcher"}
                   className={role === "senior_researcher" ? "is-selected" : ""}
                   onClick={() => setRole("senior_researcher")}
                 >
@@ -125,7 +130,7 @@ export function LoginPage() {
                     {next.startsWith("/join/") ? "Then you return to the invite." : "Join the Senior Researcher pool."}
                   </p>
                 </button>
-              </div>
+              </fieldset>
               {error ? <p className="error">{error}</p> : null}
               <button className="btn btn-primary" type="submit" disabled={busy || !configured}>
                 Continue

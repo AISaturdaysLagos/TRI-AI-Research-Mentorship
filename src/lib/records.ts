@@ -176,6 +176,25 @@ export function projectProposalIds(projects: { id?: string; proposalId?: string 
   return ids;
 }
 
+/** Proposal IDs where match opportunities should hide for this Senior Researcher. */
+export function settledMatchProposalIds(
+  projects: { id?: string; proposalId?: string; status?: string; participantIds?: string[] }[],
+  uid: string,
+) {
+  const ids = new Set<string>();
+  for (const project of projects) {
+    const proposalId = project.proposalId || project.id;
+    if (!proposalId) continue;
+    const participants = Array.isArray(project.participantIds) ? project.participantIds.map(String) : [];
+    const joined = participants.includes(uid);
+    const pastScoping = Boolean(project.status && project.status !== "scoping");
+    if (!joined && !pastScoping) continue;
+    ids.add(proposalId);
+    if (project.id) ids.add(project.id);
+  }
+  return ids;
+}
+
 export async function listParticipantProjects(uid: string) {
   const db = firestore();
   if (!db) return [];
@@ -324,6 +343,37 @@ export async function listSeniorProfiles() {
   if (!db) return [];
   const snapshot = await getDocs(collection(db, "seniorResearcherProfiles"));
   return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+}
+
+export async function listResearcherProfiles() {
+  const db = firestore();
+  if (!db) return [];
+  const snapshot = await getDocs(collection(db, "researcherProfiles"));
+  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+}
+
+/** Remove a Researcher from the programme directory (profile + user record). Auth login may still exist. */
+export async function deleteResearcherFromDirectory(uid: string) {
+  const db = firestore();
+  if (!db) throw new Error("This is unavailable right now.");
+  const trimmed = uid.trim();
+  if (!trimmed) throw new Error("Choose a Researcher to remove.");
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "researcherProfiles", trimmed));
+  batch.delete(doc(db, "users", trimmed));
+  await batch.commit();
+}
+
+/** Remove a Senior Researcher from the programme directory (profile + user record). Auth login may still exist. */
+export async function deleteSeniorResearcherFromDirectory(uid: string) {
+  const db = firestore();
+  if (!db) throw new Error("This is unavailable right now.");
+  const trimmed = uid.trim();
+  if (!trimmed) throw new Error("Choose a Senior Researcher to remove.");
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "seniorResearcherProfiles", trimmed));
+  batch.delete(doc(db, "users", trimmed));
+  await batch.commit();
 }
 
 export async function updateMentorPool(
@@ -555,7 +605,7 @@ export async function createAwardProject(input: {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
   const title = input.title.trim().slice(0, 200);
-  if (!title) throw new Error("Add a title for this TRI AI Saturdays Award project.");
+  if (!title) throw new Error("Add a title for this TRI AI Saturdays Research Award project.");
   const [proposalSnap, projectSnap] = await Promise.all([
     getDocs(collection(db, "proposals")),
     getDocs(collection(db, "projects")),
@@ -669,6 +719,42 @@ export async function listProjectInvites() {
   return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
 }
 
+type PendingInviteRow = {
+  id: string;
+  projectId?: string;
+  projectTitle?: string;
+  role?: string;
+  awardId?: string;
+  guestName?: string;
+  guestEmail?: string;
+  status?: string;
+  acceptedIds?: string[];
+};
+
+/** Open invites addressed to this email where the person has not joined the project yet. */
+export async function listPendingInvitesForEmail(email: string, uid?: string) {
+  const db = firestore();
+  if (!db) return [];
+  const guestEmail = email.trim().toLowerCase();
+  if (!guestEmail) return [];
+  const snapshot = await getDocs(
+    query(collection(db, "projectInvites"), where("guestEmail", "==", guestEmail), where("status", "==", "open")),
+  );
+  const rows = visibleRows(
+    snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as PendingInviteRow),
+  );
+  const pending: PendingInviteRow[] = [];
+  for (const row of rows) {
+    const projectId = String(row.projectId ?? "");
+    if (!projectId) continue;
+    const accepted = Array.isArray(row.acceptedIds) ? row.acceptedIds.map(String) : [];
+    if (uid && accepted.includes(uid)) continue;
+    if (uid && (await projectMembership(projectId, uid))) continue;
+    pending.push(row);
+  }
+  return pending;
+}
+
 export async function getProjectInvite(token: string) {
   const db = firestore();
   if (!db) return null;
@@ -760,7 +846,7 @@ export async function acceptProjectInvite(
     const lock = await getDoc(lockRef);
     if (lock.exists() && lock.data().projectId !== projectId) {
       throw new Error(
-        "You are already on a TRI AI Saturdays Award project.",
+        "You are already on a TRI AI Saturdays Research Award project.",
       );
     }
     if (!lock.exists()) {
@@ -901,19 +987,53 @@ export async function introduceMatch(match: {
   researcherId?: string;
   researcherName?: string;
   title?: string;
+  /** When true, add the Senior Researcher to an existing scoping project without rewriting the proposal introduction. */
+  joinExisting?: boolean;
 }) {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
   await ensureProjectsForIntroducedMatches([{ ...match, introduced: true }]);
-  const introduction = `TRI AI has introduced you to ${match.mentorName}. The next step is a scoping meeting.`;
   await setDoc(
     doc(db, "matches", match.id),
     { introduced: true, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  if (match.joinExisting) return;
+  const introduction = `TRI AI has introduced you to ${match.mentorName}. The next step is a scoping meeting.`;
   await setDoc(
     doc(db, "proposals", match.proposalId),
     { introduction, updatedAt: serverTimestamp() },
     { merge: true },
   );
+}
+
+/** If a scoping project already exists and the Senior Researcher is interested, add them without admin introduce tasks. */
+export async function joinScopingProjectIfInterested(input: {
+  matchId: string;
+  proposalId: string;
+  mentorId: string;
+  mentorName: string;
+  response: MatchResponse;
+  title?: string;
+}) {
+  if (input.response !== "interested" && input.response !== "interested_with_questions") return false;
+  const db = firestore();
+  if (!db) return false;
+  const projectSnap = await getDoc(doc(db, "projects", input.proposalId));
+  const project = projectSnap.exists() ? projectSnap.data() : null;
+  if (!project || project.status !== "scoping") return false;
+  const participants = Array.isArray(project.participantIds) ? project.participantIds.map(String) : [];
+  if (participants.includes(input.mentorId)) {
+    await setDoc(doc(db, "matches", input.matchId), { introduced: true, updatedAt: serverTimestamp() }, { merge: true });
+    return true;
+  }
+  await introduceMatch({
+    id: input.matchId,
+    proposalId: input.proposalId,
+    mentorId: input.mentorId,
+    mentorName: input.mentorName,
+    title: input.title,
+    joinExisting: true,
+  });
+  return true;
 }

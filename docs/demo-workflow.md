@@ -12,7 +12,7 @@ To restore the records after a live edit, run `npm run seed:demo` from this repo
 
 | Button | Person | Use them to show |
 | --- | --- | --- |
-| Researcher · Ada | Ada Okonkwo | The researcher home, the TRI AI Saturdays Award, and a project in scoping |
+| Researcher · Ada | Ada Okonkwo | The researcher home, the TRI AI Saturdays Research Award, and a project in scoping |
 | Researcher · Chidi | Chidi Okeke | The same award project from a second researcher |
 | Senior · Kwame | Kwame Mensah | A match request waiting for a reply, and projects he has already joined |
 | Reviewer | Nia Adeyemi | A scored proposal still under review |
@@ -31,7 +31,7 @@ Stay signed out.
 
 | Open | Show |
 | --- | --- |
-| `#/` | Two ways in: a proposal, or a TRI AI Saturdays Award. |
+| `#/` | Two ways in: a proposal, or a TRI AI Saturdays Research Award. |
 | `#/how-it-works` | The path from an idea to a project with a Senior Researcher. |
 | `#/researchers` | What a Researcher does. |
 | `#/senior-researchers` | Senior Researcher acceptance is voluntary. |
@@ -47,7 +47,7 @@ Sign in as **Researcher · Ada**.
 `#/dashboard` opens on **Projects**.
 
 - The notices name work already in motion: flood mapping and Hausa health are in scoping, the crop proposal needs a revision, the tokeniser proposal is under review, and the Yoruba speech proposal has been received.
-- **TRI AI Saturdays Awards** shows **Flood mapping from satellite imagery** with Ada, Chidi, and Amina, and Senior Researchers Kwame and Zainab. **Open this invite** goes to `#/award/saturdays-sample`.
+- **TRI AI Saturdays Research Awards** shows **Flood mapping from satellite imagery** with Ada, Chidi, and Amina, and Senior Researchers Kwame and Zainab. **Open this invite** goes to `#/award/saturdays-sample`.
 - Under **Projects**, open **Flood mapping from satellite imagery**.
 - On another project card, open **Email TRI AI** and then **Message**. The draft is in Ada’s voice: “I have uploaded the Project Charter…”
 
@@ -66,7 +66,7 @@ On the flood project, `#/dashboard/projects/fixture-flood-project`, the page ope
 
 Open **Proposals** (`#/dashboard?tab=records`) to show the same person’s proposals at different stages. The crop proposal has a revision email ready.
 
-Sign out. If you want a second researcher, sign in as **Researcher · Chidi**. He is on the same TRI AI Saturdays Award project, not a second one.
+Sign out. If you want a second researcher, sign in as **Researcher · Chidi**. He is on the same TRI AI Saturdays Research Award project, not a second one.
 
 ## 3. Senior Researcher
 
@@ -102,7 +102,7 @@ Sign in as **Admin**.
 | `#/admin/mentors` | Kwame, Zainab, and Ifeoma are in the Senior Researcher pool. |
 | `#/admin/reports` | Live counts and the CSV export. |
 
-The researcher invite is `#/join/join-flood-researcher`. The Senior Researcher invite is `#/join/join-flood-senior`. Open one while signed out and show that joining is a choice. Do not complete it during the demo. Ada, Chidi, and Amina already belong to this TRI AI Saturdays Award project, so another award project will not accept them.
+The researcher invite is `#/join/join-flood-researcher`. The Senior Researcher invite is `#/join/join-flood-senior`. Open one while signed out and show that joining is a choice. Do not complete it during the demo. Ada, Chidi, and Amina already belong to this TRI AI Saturdays Research Award project, so another award project will not accept them.
 
 ## 6. Close on the public result
 

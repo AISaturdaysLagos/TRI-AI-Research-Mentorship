@@ -8,6 +8,7 @@ import { introductionEmail, matchRequestEmail, named, type EmailDraft } from "..
 import { introduceMatch, listDirectory, listMatches, listProjects, listProposals, listSeniorProfiles, sendMatchOpportunity } from "../lib/records";
 import { EMPTY_FIT, FIT_DIMENSIONS, type FitScores } from "../types/domain";
 import { userFacingError } from "../lib/errors";
+import { SearchSelect } from "../components/SearchSelect";
 
 type ProposalRow = Record<string, unknown> & { id: string };
 type MentorRow = {
@@ -224,7 +225,7 @@ export function AdminMatchingPage() {
         <div className="empty">
           No proposals are waiting for matching.
         </div>
-        <EmailSupport draft={introductionDraft} />
+        <EmailSupport label="Introduction email" draft={introductionDraft} autoOpen />
       </div>
     );
   }
@@ -233,13 +234,18 @@ export function AdminMatchingPage() {
     <div>
       <h2><Mark name="match">Matching</Mark></h2>
       <div className="filters">
-        <select aria-label="Proposal" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
-          {proposals.map((item) => (
-            <option key={item.id} value={item.id}>
-              {String(item.title || "Untitled")}
-            </option>
-          ))}
-        </select>
+        <SearchSelect
+          hideLabel
+          label="Proposal"
+          options={proposals.map((item) => ({
+            value: item.id,
+            label: String(item.title || "Untitled"),
+            detail: String(item.name || item.researchArea || ""),
+          }))}
+          value={selectedId}
+          onChange={setSelectedId}
+          placeholder="Search proposals…"
+        />
       </div>
       {selected ? (
         <p>
@@ -321,22 +327,23 @@ export function AdminMatchingPage() {
           <h3>Fit score</h3>
           <p className="quiet">Total {fitScore} / 25</p>
           {FIT_DIMENSIONS.map((item) => (
-            <label key={item.key}>
-              {item.label}
-              <span className="quiet">Up to {item.max}</span>
-              <input
-                type="number"
-                min={0}
-                max={item.max}
-                value={fit[item.key]}
-                onChange={(event) =>
-                  setFit((current) => ({
-                    ...current,
-                    [item.key]: Math.min(item.max, Math.max(0, Number(event.target.value) || 0)),
-                  }))
-                }
-              />
-            </label>
+            <SearchSelect
+              key={item.key}
+              label={item.label}
+              hint={`Up to ${item.max}`}
+              options={Array.from({ length: item.max + 1 }, (_, score) => ({
+                value: String(score),
+                label: String(score),
+              }))}
+              value={String(fit[item.key])}
+              onChange={(next) =>
+                setFit((current) => ({
+                  ...current,
+                  [item.key]: Math.min(item.max, Math.max(0, Number(next) || 0)),
+                }))
+              }
+              placeholder={`0–${item.max}`}
+            />
           ))}
           <label>
             Note for the Senior Researcher
@@ -344,8 +351,8 @@ export function AdminMatchingPage() {
           </label>
           {message ? <p className="quiet">{message}</p> : null}
           {error ? <p className="error">{error}</p> : null}
-          <EmailSupport draft={opportunityDraft} />
-          <EmailSupport draft={introductionDraft} />
+          <EmailSupport label="Opportunity email" draft={opportunityDraft} autoOpen />
+          <EmailSupport label="Introduction email" draft={introductionDraft} />
           <button className="btn btn-primary" type="submit" disabled={busy || !mentorId}>
             Send opportunity
           </button>

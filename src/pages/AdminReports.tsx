@@ -6,6 +6,8 @@ import { Loader } from "../components/Loader";
 import { useAuth } from "../lib/auth";
 import { listProjects, listProposals } from "../lib/records";
 import { userFacingError } from "../lib/errors";
+import { SearchSelect } from "../components/SearchSelect";
+import { projectTypeLabel } from "../types/domain";
 
 type ProposalRow = { id: string; title?: string; status?: string; route?: string; researchArea?: string };
 type ProjectRow = {
@@ -85,14 +87,17 @@ export function AdminReportsPage() {
     <div>
       <h2><Mark name="report">Reports</Mark></h2>
       <div className="filters">
-        <label>
-          Route
-          <select value={route} onChange={(event) => setRoute(event.target.value)}>
-            <option value="all">All routes</option>
-            <option value="direct">Direct proposal</option>
-            <option value="saturdays">TRI AI Saturdays Award</option>
-          </select>
-        </label>
+        <SearchSelect
+          label="Route"
+          options={[
+            { value: "all", label: "All routes" },
+            { value: "direct", label: "Direct proposal" },
+            { value: "saturdays", label: "TRI AI Saturdays Research Award" },
+          ]}
+          value={route}
+          onChange={setRoute}
+          placeholder="Route…"
+        />
       </div>
       <h3>Proposals</h3>
       <div className="table-wrap">
@@ -161,7 +166,7 @@ export function AdminReportsPage() {
               ...visibleProposals.map((row) => [
                 "Proposal",
                 row.title || "Untitled",
-                proposalRoute(row) === "saturdays" ? "TRI AI Saturdays Award" : "Direct proposal",
+                proposalRoute(row) === "saturdays" ? "TRI AI Saturdays Research Award" : "Direct proposal",
                 row.status || "",
                 "",
                 row.researchArea || "",
@@ -169,7 +174,7 @@ export function AdminReportsPage() {
               ...visibleProjects.map((row) => [
                 "Project",
                 row.title || "Untitled",
-                row.awardId ? "TRI AI Saturdays Award" : "Direct proposal",
+                projectTypeLabel(row),
                 row.status || "",
                 row.health || "green",
                 row.researchArea || "",

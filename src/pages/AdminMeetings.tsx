@@ -31,6 +31,9 @@ import {
 } from "../lib/meetings";
 import { listMatches, listProjects, listProposals } from "../lib/records";
 import { userFacingError } from "../lib/errors";
+import { CloseButton } from "../components/CloseButton";
+import { SearchSelect } from "../components/SearchSelect";
+import { projectTypeLabel } from "../types/domain";
 
 type DirectoryPerson = MeetingPerson & { role?: string };
 
@@ -57,6 +60,7 @@ type ProjectOption = {
   title?: string;
   status?: string;
   proposalId?: string;
+  awardId?: string;
   researchers?: { uid?: string; name?: string }[];
   seniorResearchers?: { uid?: string; name?: string }[];
 };
@@ -173,13 +177,13 @@ function AdminMeetingCard({
               })
               .join("; ")}
       </p>
-      {meeting.status !== "cancelled" ? (
+      {meeting.status !== "cancelled" && !editing ? (
         <div className="actions">
-          <button className="btn btn-ghost btn-compact" type="button" disabled={busy} onClick={() => setEditing((value) => !value)}>
-            {editing ? "Close editor" : "Edit"}
+          <button className="btn btn-ghost btn-compact" type="button" disabled={busy} onClick={() => setEditing(true)}>
+            Edit
           </button>
           {confirming ? (
-            <button className="btn btn-primary btn-compact" type="button" disabled={busy} onClick={() => void cancel()}>
+            <button className="btn btn-danger btn-compact" type="button" disabled={busy} onClick={() => void cancel()}>
               Confirm cancel
             </button>
           ) : (
@@ -190,7 +194,11 @@ function AdminMeetingCard({
         </div>
       ) : null}
       {editing && meeting.status !== "cancelled" ? (
-        <form className="fields" onSubmit={(event) => void saveEdit(event)}>
+        <form className="fields has-dismiss" onSubmit={(event) => void saveEdit(event)}>
+          <CloseButton label="Close editor" className="btn-compact" disabled={busy} onClick={() => setEditing(false)} />
+          <div className="archive-head">
+            <h3>Edit meeting</h3>
+          </div>
           <MeetingTimePicker value={editWhen} onChange={setEditWhen} people={attendees} preserveInstantOnZone />
           <label>
             Note
@@ -281,12 +289,37 @@ export function AdminMeetingsPage() {
     matches.filter((item) => item.introduced && item.mentorId && item.proposalId).map((item) => item.proposalId),
   );
   const scopingProposals = proposals.filter((item) => matchedProposalIds.has(item.id));
+  const awardScopingProjects = projects.filter((item) => item.status === "scoping" && Boolean(item.awardId));
   const activeProjects = projects.filter((item) => item.status === "active");
-  const options = kind === "scoping" ? scopingProposals : activeProjects;
+  const isAwardScoping =
+    kind === "scoping" && projects.some((item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId));
+  const options = kind === "scoping" ? [...scopingProposals, ...awardScopingProjects] : activeProjects;
+
+  function scopingTaken(id: string) {
+    return meetings.some(
+      (meeting) =>
+        meeting.kind === "scoping" &&
+        meeting.status !== "cancelled" &&
+        (meeting.proposalId === id || meeting.projectId === id),
+    );
+  }
 
   const candidates = useMemo(() => {
     if (!recordId) return [];
+    function peopleOn(project: ProjectOption) {
+      const researchers = (project.researchers ?? [])
+        .map((item) => personFrom(directory, item.uid || "", item.name || "Researcher"))
+        .filter((item): item is MeetingPerson => Boolean(item));
+      const seniors = (project.seniorResearchers ?? [])
+        .map((item) => personFrom(directory, item.uid || "", item.name || "Senior Researcher"))
+        .filter((item): item is MeetingPerson => Boolean(item));
+      return [...researchers, ...seniors];
+    }
     if (kind === "scoping") {
+      const awardProject = projects.find(
+        (item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId),
+      );
+      if (awardProject) return peopleOn(awardProject);
       const proposal = proposals.find((item) => item.id === recordId);
       if (!proposal) return [];
       const researcherIds = proposal.researcherIds?.length ? proposal.researcherIds : proposal.ownerId ? [proposal.ownerId] : [];
@@ -302,13 +335,7 @@ export function AdminMeetingsPage() {
     }
     const project = projects.find((item) => item.id === recordId);
     if (!project) return [];
-    const researchers = (project.researchers ?? [])
-      .map((item) => personFrom(directory, item.uid || "", item.name || "Researcher"))
-      .filter((item): item is MeetingPerson => Boolean(item));
-    const seniors = (project.seniorResearchers ?? [])
-      .map((item) => personFrom(directory, item.uid || "", item.name || "Senior Researcher"))
-      .filter((item): item is MeetingPerson => Boolean(item));
-    return [...researchers, ...seniors];
+    return peopleOn(project);
   }, [directory, kind, matches, projects, proposals, recordId]);
 
   useEffect(() => {
@@ -322,7 +349,13 @@ export function AdminMeetingsPage() {
   }, [candidates]);
 
   function titleFor(id: string) {
-    if (kind === "scoping") return proposals.find((item) => item.id === id)?.title || "Scoping meeting";
+    if (kind === "scoping") {
+      return (
+        awardScopingProjects.find((item) => item.id === id)?.title ||
+        proposals.find((item) => item.id === id)?.title ||
+        "Scoping meeting"
+      );
+    }
     return projects.find((item) => item.id === id)?.title || "Project meeting";
   }
 
@@ -354,22 +387,23 @@ export function AdminMeetingsPage() {
             )
             .map((person) => ({ uid: person.uid, name: person.name || "TRI AI Admin", email: person.email }))
         : [];
-    if (kind === "scoping" && !matchedProposalIds.has(recordId)) {
+    if (kind === "scoping" && !isAwardScoping && !matchedProposalIds.has(recordId)) {
       setError(scopingNeedsMatch);
       return;
     }
     if (researchers.length === 0 || seniorResearchers.length === 0) {
-      setError("Choose at least one Researcher and one Senior Researcher.");
+      setError(
+        isAwardScoping
+          ? "Invite a Researcher and a Senior Researcher, then wait until both have joined the project."
+          : "Choose at least one Researcher and one Senior Researcher.",
+      );
       return;
     }
     if (kind === "scoping" && programmeAdmins.length === 0) {
       setError("Add a TRI AI admin.");
       return;
     }
-    if (
-      kind === "scoping" &&
-      meetings.some((meeting) => meeting.kind === "scoping" && meeting.proposalId === recordId && meeting.status !== "cancelled")
-    ) {
+    if (kind === "scoping" && scopingTaken(recordId)) {
       setError(scopingMeetingTaken);
       return;
     }
@@ -405,9 +439,9 @@ export function AdminMeetingsPage() {
       await saveMeeting({
         kind,
         title: subject,
-        proposalId: kind === "scoping" ? recordId : "",
+        proposalId: kind === "scoping" && !isAwardScoping ? recordId : "",
         projectId:
-          kind === "project"
+          kind === "project" || isAwardScoping
             ? recordId
             : projects.find((item) => item.proposalId === recordId && item.status === "scoping")?.id || "",
         starts: startDate,
@@ -472,54 +506,67 @@ export function AdminMeetingsPage() {
       {creating ? null : (
         <div className="button-row">
           <button className="btn btn-primary" type="button" aria-expanded={false} onClick={() => setCreating(true)}>
-            Create Meetings
+            Create a meeting
           </button>
         </div>
       )}
       {creating ? (
-      <form className="fields" onSubmit={(event) => void onSubmit(event)}>
+      <form className="fields has-dismiss" onSubmit={(event) => void onSubmit(event)}>
+        <CloseButton label="Close create meeting" className="btn-compact" onClick={() => setCreating(false)} />
         <div className="archive-head">
-          <h2><Mark name="meeting">Create Meetings</Mark></h2>
-          <button className="btn btn-ghost btn-compact" type="button" aria-expanded onClick={() => setCreating(false)}>
-            Close
-          </button>
+          <h2><Mark name="meeting">Create a meeting</Mark></h2>
         </div>
-        <p className="quiet">Set a scoping meeting, or a meeting on an active project.</p>
-        <label>
-          Meeting
-          <select
-            value={kind}
-            onChange={(event) => {
-              setKind(event.target.value as MeetingKind);
-              setRecordId("");
-            }}
-          >
-            <option value="scoping">New scoping meeting</option>
-            <option value="project">Active project meeting</option>
-          </select>
-        </label>
-        <label>
-          {kind === "scoping" ? "Proposal" : "Active project"}
-          <select value={recordId} onChange={(event) => setRecordId(event.target.value)}>
-            <option value="">Select</option>
-            {options.map((item) => {
-              const taken =
-                kind === "scoping" &&
-                meetings.some((meeting) => meeting.kind === "scoping" && meeting.proposalId === item.id && meeting.status !== "cancelled");
-              return (
-              <option key={item.id} value={item.id} disabled={taken}>
-                {item.title || "Untitled"}
-                {taken ? " — scoping meeting already set" : ""}
-              </option>
-              );
-            })}
-          </select>
-        </label>
-        {kind === "scoping" && scopingProposals.length === 0 ? (
-          <p className="quiet">Introduce a Senior Researcher first.</p>
+        <p className="quiet">
+          Set a scoping meeting for an introduced proposal or a TRI AI Saturdays Research Award project, or a meeting on an
+          active project.
+        </p>
+        <SearchSelect
+          label="Meeting"
+          options={[
+            { value: "scoping", label: "New scoping meeting" },
+            { value: "project", label: "Active project meeting" },
+          ]}
+          value={kind}
+          onChange={(next) => {
+            setKind(next as MeetingKind);
+            setRecordId("");
+          }}
+          placeholder="Meeting type…"
+        />
+        <SearchSelect
+          label={kind === "scoping" ? "Proposal or award project" : "Active project"}
+          options={[
+            { value: "", label: "Select" },
+            ...options.map((item) => {
+              const taken = kind === "scoping" && scopingTaken(item.id);
+              const award = kind === "scoping" && "awardId" in item && Boolean((item as ProjectOption).awardId);
+              const type =
+                kind === "project" || award ? projectTypeLabel(item as ProjectOption) : undefined;
+              return {
+                value: item.id,
+                label: item.title || "Untitled",
+                detail: taken ? "Scoping meeting already set" : type,
+                disabled: taken,
+              };
+            }),
+          ]}
+          value={recordId}
+          onChange={setRecordId}
+          placeholder={kind === "scoping" ? "Search proposals or award projects…" : "Search projects…"}
+          required
+        />
+        {kind === "scoping" && scopingProposals.length === 0 && awardScopingProjects.length === 0 ? (
+          <p className="quiet">
+            Introduce a Senior Researcher on a proposal, or create a TRI AI Saturdays Research Award project that still needs
+            scoping.
+          </p>
         ) : null}
         {recordId && (candidates.filter((person) => directory.find((item) => item.uid === person.uid)?.role === "senior_researcher").length === 0 || candidates.filter((person) => directory.find((item) => item.uid === person.uid)?.role !== "senior_researcher").length === 0) ? (
-          <p className="quiet">Add a Researcher and a Senior Researcher.</p>
+          <p className="quiet">
+            {isAwardScoping
+              ? "Invite a Researcher and a Senior Researcher, then wait until both have joined before setting the meeting."
+              : "Add a Researcher and a Senior Researcher."}
+          </p>
         ) : null}
         {candidates.length > 0 ? (
           <fieldset className="fields">
@@ -581,7 +628,7 @@ export function AdminMeetingsPage() {
       </form>
       ) : null}
       {message ? <p className="notice">{message}</p> : null}
-      <EmailSupport draft={mail} />
+      <EmailSupport label="Meeting email" draft={mail} autoOpen />
       <h2 style={{ marginTop: 28 }}><Mark name="meeting">Upcoming</Mark></h2>
       <MeetingSchedule
         meetings={upcoming}

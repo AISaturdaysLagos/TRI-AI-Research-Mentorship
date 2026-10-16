@@ -27,7 +27,8 @@ export type IconName =
   | "review"
   | "theme"
   | "archive"
-  | "status";
+  | "status"
+  | "email";
 
 const tones: Record<IconName, "teaching" | "research" | "innovation" | "gold" | "success" | "alert"> = {
   folder: "gold",
@@ -57,6 +58,7 @@ const tones: Record<IconName, "teaching" | "research" | "innovation" | "gold" | 
   theme: "gold",
   archive: "research",
   status: "gold",
+  email: "research",
 };
 
 const glyphs: Record<IconName, string[]> = {
@@ -87,6 +89,10 @@ const glyphs: Record<IconName, string[]> = {
   theme: ["M12 4.2v1.8", "M12 18v1.8", "M4.2 12H6", "M18 12h1.8", "M6.4 6.4l1.3 1.3", "M16.3 16.3l1.3 1.3", "M17.6 6.4l-1.3 1.3", "M7.7 16.3l-1.3 1.3", "M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"],
   archive: ["M4.5 6.2h15v3.2h-15V6.2Z", "M6 9.4v9.2h12V9.4", "M10 13h4"],
   status: ["M12 4.8 14.1 9.2 19 9.8 15.4 13.2 16.4 18 12 15.6 7.6 18 8.6 13.2 5 9.8 9.9 9.2 12 4.8Z"],
+  email: [
+    "M4.5 6.5h15A1.5 1.5 0 0 1 21 8v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 16V8A1.5 1.5 0 0 1 4.5 6.5Z",
+    "M4 8.2 12 13.2 20 8.2",
+  ],
 };
 
 export function Icon({ name }: { name: IconName }) {

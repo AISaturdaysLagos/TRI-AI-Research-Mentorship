@@ -8,12 +8,12 @@ export function Footer() {
       <div className="container">
         <div className="ftr-top">
           <div>
-            <Wordmark />
+            <Wordmark size={36} />
             <p className="mono" style={{ marginTop: 14 }}>
               Teaching · Research · Innovation
             </p>
             <p className="ftr-blurb">
-              A digital home for the TRI AI Researcher and Senior Researcher Programme.
+              A digital home for the TRI AI Research Mentorship Programme.
             </p>
           </div>
           <div className="ftr-cols">

@@ -11,28 +11,30 @@ import { Icon, Mark } from "../components/Icon";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { useAuth } from "../lib/auth";
 import {
-  getAward,
-  listAwardsForRecipient,
   expressMatchInterest,
+  joinScopingProjectIfInterested,
   listMatches,
   listParticipantProjects,
+  listPendingInvitesForEmail,
   listResearcherProposals,
   listResearchProjects,
   projectProposalIds,
   respondToMatch,
+  settledMatchProposalIds,
 } from "../lib/records";
-import { MATCH_RESPONSES, type MatchResponse } from "../types/domain";
+import { MATCH_RESPONSES, projectTypeLabel, type MatchResponse } from "../types/domain";
 import { userFacingError } from "../lib/errors";
+import { SearchSelect } from "../components/SearchSelect";
 
 type Person = { uid?: string; name?: string };
 
-type AwardRow = {
+type PendingInvite = {
   id: string;
-  title?: string;
-  status?: string;
-  recipients?: Person[];
-  researchers?: Person[];
-  seniorResearchers?: Person[];
+  projectId?: string;
+  projectTitle?: string;
+  role?: string;
+  awardId?: string;
+  guestName?: string;
 };
 
 type ProjectRow = {
@@ -47,20 +49,6 @@ type ProjectRow = {
   researchers?: Person[];
   seniorResearchers?: Person[];
 };
-
-function mergedNames(...groups: (Person[] | undefined)[]) {
-  const seen = new Set<string>();
-  const names: string[] = [];
-  for (const person of groups.flatMap((group) => group ?? [])) {
-    const name = person.name?.trim();
-    if (!name) continue;
-    const key = name.toLocaleLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    names.push(name);
-  }
-  return names.length > 0 ? names.join(", ") : "None yet";
-}
 
 function personNames(people?: Person[]) {
   const names = (people ?? []).map((person) => person.name).filter(Boolean);
@@ -149,15 +137,20 @@ function ProjectList({
     <>
       <h2 style={{ marginTop: stacked ? 28 : 0 }}><Mark name="projects">Projects</Mark></h2>
       {projects.length === 0 ? (
-        <div className="empty" style={{ marginTop: 16 }}>
-          No project lists this account yet.
+        <div className="empty empty-with-action">
+          <p>No projects are linked to this account yet.</p>
+          <Link className="btn btn-primary btn-compact" to="/apply/researcher">
+            <Icon name="apply" />
+            Submit a proposal
+          </Link>
         </div>
       ) : (
         <div className="record-grid">
           {projects.map((project) => (
             <article key={project.id} className="card">
-              <p className="mono">{project.researchArea || "Project"}</p>
+              <p className="mono">{projectTypeLabel(project)}</p>
               <h3>{project.title || "Untitled project"}</h3>
+              {project.researchArea ? <p className="quiet">{project.researchArea}</p> : null}
               <p>{project.status ? <StatusChip status={project.status} /> : "—"}</p>
               {project.researchers?.length ? <p className="quiet">Researchers: {personNames(project.researchers)}</p> : null}
               {project.seniorResearchers?.length ? (
@@ -173,19 +166,15 @@ function ProjectList({
               </p>
               {[...(project.researchers ?? []), ...(project.seniorResearchers ?? [])].some((person) => person.uid === uid)
               || returnFoldersFor(project.proposalId || project.id).some((folder) => folder.uid === uid) ? (
-                <details className="fold">
-                  <summary>Email TRI AI</summary>
-                  <div className="fold-body">
-                    <EmailSupport
-                      draft={returnedDocumentEmail({
-                        title: project.title || "Untitled project",
-                        person: named(personName, email),
-                        recordId: project.proposalId || project.id,
-                        documentName: project.charterSigned ? "progress update" : "Project Charter",
-                      })}
-                    />
-                  </div>
-                </details>
+                <EmailSupport
+                  label="Email TRI AI"
+                  draft={returnedDocumentEmail({
+                    title: project.title || "Untitled project",
+                    person: named(personName, email),
+                    recordId: project.proposalId || project.id,
+                    documentName: project.charterSigned ? "progress update" : "Project Charter",
+                  })}
+                />
               ) : null}
             </article>
           ))}
@@ -225,14 +214,17 @@ function MatchRequestList({
       <h2><Mark name="match">Match requests</Mark></h2>
       <p className="quiet">Requests sent to you are listed first.</p>
       <div className="filters">
-        <label>
-          Show
-          <select value={fitFilter} onChange={(event) => onFitFilter(event.target.value)}>
-            <option value="all">All match requests</option>
-            <option value="15">Sent to you, fit 15 / 25 or higher</option>
-            <option value="20">Sent to you, fit 20 / 25 or higher</option>
-          </select>
-        </label>
+        <SearchSelect
+          label="Show"
+          options={[
+            { value: "all", label: "All match requests" },
+            { value: "15", label: "Sent to you, fit 15 / 25 or higher" },
+            { value: "20", label: "Sent to you, fit 20 / 25 or higher" },
+          ]}
+          value={fitFilter}
+          onChange={onFitFilter}
+          placeholder="Filter matches…"
+        />
       </div>
       {error ? <p className="error">{error}</p> : null}
       {rows.length === 0 ? (
@@ -344,7 +336,7 @@ function MatchRequestCard({
           ))}
         </div>
       </form>
-      {mail ? <EmailSupport draft={mail} /> : null}
+      {mail ? <EmailSupport label="Response email" draft={mail} autoOpen /> : null}
     </article>
   );
 }
@@ -352,7 +344,7 @@ function MatchRequestCard({
 export function DashboardPage() {
   const { user, profile } = useAuth();
   const [rows, setRows] = useState<MatchCard[]>([]);
-  const [awards, setAwards] = useState<AwardRow[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [responseMail, setResponseMail] = useState<ReturnType<typeof matchResponseEmail> | null>(null);
@@ -370,41 +362,48 @@ export function DashboardPage() {
         listResearcherProposals(user.uid),
         listParticipantProjects(user.uid),
         listResearchProjects(),
-        listAwardsForRecipient(user.uid),
+        listPendingInvitesForEmail(user.email || "", user.uid),
       ])
-        .then(([items, projectRows, programmeProjects, awardRows]) => {
+        .then(([items, projectRows, programmeProjects, inviteRows]) => {
           const matched = projectProposalIds([
             ...(projectRows as { id?: string; proposalId?: string }[]),
             ...(programmeProjects as { id?: string; proposalId?: string }[]),
           ]);
           setRows((items as MatchCard[]).filter((row) => !matched.has(row.id)));
           setProjects(projectRows as ProjectRow[]);
-          setAwards(awardRows as AwardRow[]);
+          setPendingInvites(
+            (inviteRows as PendingInvite[]).filter((invite) => (invite.role || "researcher") === "researcher"),
+          );
         })
         .catch(() => {
           setRows([]);
           setProjects([]);
-          setAwards([]);
+          setPendingInvites([]);
         })
         .finally(() => setLoaded(true));
     }
     if (profile.role === "senior_researcher") {
-      Promise.all([listMatches(), listParticipantProjects(user.uid), listResearchProjects()])
-        .then(async ([items, projectRows, programmeProjects]) => {
-          const listed = projectRows as ProjectRow[];
-          setProjects(listed);
-          const awardIds = [...new Set(listed.map((project) => project.awardId).filter((id): id is string => Boolean(id)))];
-          const awardRows = (await Promise.all(awardIds.map((id) => getAward(id)))).filter(
-            (row): row is AwardRow => Boolean(row),
+      Promise.all([
+        listMatches(),
+        listParticipantProjects(user.uid),
+        listResearchProjects(),
+        listPendingInvitesForEmail(user.email || "", user.uid),
+      ])
+        .then(async ([items, projectRows, programmeProjects, inviteRows]) => {
+          setProjects(projectRows as ProjectRow[]);
+          setPendingInvites(
+            (inviteRows as PendingInvite[]).filter((invite) => invite.role === "senior_researcher"),
           );
-          setAwards(awardRows);
           setRows(
             proposalMatchRequests(
               items as Row[],
-              projectProposalIds([
-                ...(projectRows as { id?: string; proposalId?: string }[]),
-                ...(programmeProjects as { id?: string; proposalId?: string }[]),
-              ]),
+              settledMatchProposalIds(
+                [
+                  ...(projectRows as { id?: string; proposalId?: string; status?: string; participantIds?: string[] }[]),
+                  ...(programmeProjects as { id?: string; proposalId?: string; status?: string; participantIds?: string[] }[]),
+                ],
+                user.uid,
+              ),
               user.uid,
             ),
           );
@@ -412,6 +411,7 @@ export function DashboardPage() {
         .catch((err: unknown) => {
           setRows([]);
           setProjects([]);
+          setPendingInvites([]);
           setError(userFacingError(err, "Could not load match requests."));
         })
         .finally(() => setLoaded(true));
@@ -422,32 +422,47 @@ export function DashboardPage() {
     if (!user || !card.proposalId) return;
     setError("");
     const note = notes[card.proposalId] ?? card.responseNote ?? "";
+    const mentorName = profile?.displayName || user.email || "Senior Researcher";
     try {
       const ownMatchId = card.ownMatchId
         ? card.ownMatchId
         : await expressMatchInterest({
             proposalId: card.proposalId,
             mentorId: user.uid,
-            mentorName: profile?.displayName || user.email || "Senior Researcher",
+            mentorName,
             response,
             responseNote: note,
             proposal: card,
           });
       if (card.ownMatchId) await respondToMatch(card.ownMatchId, response, note);
+      const joined = await joinScopingProjectIfInterested({
+        matchId: ownMatchId,
+        proposalId: card.proposalId,
+        mentorId: user.uid,
+        mentorName,
+        response,
+        title: card.title,
+      });
       setMailFor(card.proposalId);
       setResponseMail(
         matchResponseEmail({
           title: card.title || "Untitled proposal",
-          senior: named(profile?.displayName || user.email || "Senior Researcher", user.email || ""),
+          senior: named(mentorName, user.email || ""),
           response,
           note,
         }),
       );
-      setRows((current) =>
-        current.map((item) =>
-          item.proposalId === card.proposalId ? { ...item, ownMatchId, response, responseNote: note } : item,
-        ),
-      );
+      if (joined) {
+        setRows((current) => current.filter((item) => item.proposalId !== card.proposalId));
+        const projectRows = await listParticipantProjects(user.uid);
+        setProjects(projectRows as ProjectRow[]);
+      } else {
+        setRows((current) =>
+          current.map((item) =>
+            item.proposalId === card.proposalId ? { ...item, ownMatchId, response, responseNote: note } : item,
+          ),
+        );
+      }
     } catch (err) {
       setError(userFacingError(err, "Could not save your response."));
     }
@@ -471,28 +486,23 @@ export function DashboardPage() {
             <AttentionNotices />
             <WorkspaceTabs current={tab} />
             {!loaded ? <Loader label="Loading your records" /> : null}
-            {loaded && profile.role === "researcher" && tab === "projects" ? (
+            {loaded && profile.role === "researcher" && tab === "projects" && pendingInvites.length > 0 ? (
               <>
-                <h2><Mark name="award">TRI AI Saturdays Awards</Mark></h2>
-                {awards.length === 0 ? (
-                  <div className="empty" style={{ marginTop: 16 }}>
-                    No TRI AI Saturdays Award is linked to this account.
-                  </div>
-                ) : (
-                  <div className="record-grid">
-                    {awards.map((award) => (
-                      <article key={award.id} className="card">
-                        <p className="mono">TRI AI Saturdays Award</p>
-                        <h3>{award.title || "Untitled award"}</h3>
-                        <p className="quiet">Researchers: {mergedNames(award.researchers, award.recipients)}</p>
-                        <p className="quiet">Senior Researchers: {mergedNames(award.seniorResearchers)}</p>
-                        <p>
-                          <Link className="btn btn-primary btn-compact" to={`/award/${award.id}`}>Open this invite</Link>
-                        </p>
-                      </article>
-                    ))}
-                  </div>
-                )}
+                <h2><Mark name="award">Open invites</Mark></h2>
+                <div className="record-grid">
+                  {pendingInvites.map((invite) => (
+                    <article key={invite.id} className="card">
+                      <p className="mono">{projectTypeLabel(invite)}</p>
+                      <h3>{invite.projectTitle || "Untitled project"}</h3>
+                      <p className="quiet">You are invited as a Researcher{invite.guestName ? ` (${invite.guestName})` : ""}.</p>
+                      <p>
+                        <Link className="btn btn-primary btn-compact" to={`/join/${invite.id}`}>
+                          Open this invite
+                        </Link>
+                      </p>
+                    </article>
+                  ))}
+                </div>
               </>
             ) : null}
             {loaded && profile.role === "researcher" && tab === "records" ? (
@@ -536,6 +546,7 @@ export function DashboardPage() {
                       .map((row) => (
                         <EmailSupport
                           key={row.id}
+                          label="Revision email"
                           draft={revisedProposalEmail({
                             title: row.title || "Untitled proposal",
                             researcher: named(profile.displayName || "", user.email || ""),
@@ -550,24 +561,25 @@ export function DashboardPage() {
             {loaded && profile.role === "researcher" && tab === "projects" ? (
               <ProjectList
                 projects={projects}
-                stacked
+                stacked={pendingInvites.length > 0}
                 personName={profile.displayName || ""}
                 email={user.email || ""}
                 uid={user.uid}
               />
             ) : null}
-            {loaded && profile.role === "senior_researcher" && tab === "projects" && awards.length > 0 ? (
+            {loaded && profile.role === "senior_researcher" && tab === "projects" && pendingInvites.length > 0 ? (
               <>
-                <h2><Mark name="award">TRI AI Saturdays Awards</Mark></h2>
+                <h2><Mark name="award">Open invites</Mark></h2>
                 <div className="record-grid">
-                  {awards.map((award) => (
-                    <article key={award.id} className="card">
-                      <p className="mono">TRI AI Saturdays Award</p>
-                      <h3>{award.title || "Untitled award"}</h3>
-                      <p className="quiet">Researchers: {mergedNames(award.researchers, award.recipients)}</p>
-                      <p className="quiet">Senior Researchers: {mergedNames(award.seniorResearchers)}</p>
+                  {pendingInvites.map((invite) => (
+                    <article key={invite.id} className="card">
+                      <p className="mono">{projectTypeLabel(invite)}</p>
+                      <h3>{invite.projectTitle || "Untitled project"}</h3>
+                      <p className="quiet">You are invited as a Senior Researcher{invite.guestName ? ` (${invite.guestName})` : ""}.</p>
                       <p>
-                        <Link className="btn btn-primary btn-compact" to={`/award/${award.id}`}>Open this invite</Link>
+                        <Link className="btn btn-primary btn-compact" to={`/join/${invite.id}`}>
+                          Open this invite
+                        </Link>
                       </p>
                     </article>
                   ))}
@@ -577,7 +589,7 @@ export function DashboardPage() {
             {loaded && profile.role === "senior_researcher" && tab === "projects" ? (
               <ProjectList
                 projects={projects}
-                stacked={awards.length > 0}
+                stacked={pendingInvites.length > 0}
                 personName={profile.displayName || ""}
                 email={user.email || ""}
                 uid={user.uid}

@@ -4,6 +4,7 @@ import { Loader } from "../components/Loader";
 import { useAuth } from "../lib/auth";
 import { firebaseConfigured } from "../lib/firebase";
 import { acceptProjectInvite, getProjectInvite, projectMembership } from "../lib/records";
+import { projectTypeLabel } from "../types/domain";
 import type { Role } from "../types/domain";
 import { userFacingError } from "../lib/errors";
 
@@ -115,6 +116,7 @@ export function JoinProjectPage() {
           ) : null}
           {invite && invite.status === "open" ? (
             <div className="notice">
+              <p className="mono">{projectTypeLabel(invite)}</p>
               <strong>{invite.projectTitle || "Project"}</strong>
               <p>
                 You are invited as a {roleLabel(invite.role)}.
@@ -128,7 +130,7 @@ export function JoinProjectPage() {
               {invite.awardId ? (
                 <p>
                   <Link className="btn btn-ghost btn-compact" to={`/award/${invite.awardId}`}>
-                    Open the TRI AI Saturdays Award page
+                    Open the TRI AI Saturdays Research Award page
                   </Link>
                 </p>
               ) : null}

@@ -1,11 +1,16 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { CloseButton } from "../components/CloseButton";
 import { EmailSupport } from "../components/EmailSupport";
 import { HealthMark, StatusChip } from "../components/StatusChip";
 import { Mark } from "../components/Icon";
 import { Loader } from "../components/Loader";
+import { mergePersonOptions, PersonInviteForm, PersonPicker, type PersonOption } from "../components/PersonPicker";
+import { SearchSelect, optionsFrom } from "../components/SearchSelect";
+import { RESEARCH_AREA_OPTIONS, projectTypeLabel } from "../types/domain";
 import { useAuth } from "../lib/auth";
-import { blocksToMarkdown, charterBlocks, ensureProjectDrive, overviewBlocks, scopingNotesBlocks } from "../lib/driveDocs";
+import { blocksToMarkdown, charterBlocks, ensureProjectDrive, overviewBlocks, scopingNotesBlocks, syncCharterToDrive } from "../lib/driveDocs";
+import { EMPTY_CHARTER, getCharter } from "../lib/workspace";
 import { activationEmail, awardWelcomeEmail, charterRequestEmail, named, projectJoinEmail, type EmailAddress, type EmailDraft } from "../lib/email";
 import { returnFoldersFor } from "../lib/returns";
 import {
@@ -59,100 +64,53 @@ type InviteRow = {
   guestEmail?: string;
 };
 
-type Guest = { name: string; email: string };
+type Guest = PersonOption;
 
-function GuestList({
-  legend,
-  people,
-  onChange,
-}: {
-  legend: string;
-  people: Guest[];
-  onChange: (people: Guest[]) => void;
-}) {
-  return (
-    <fieldset className="guest-list">
-      <legend>{legend}</legend>
-      {people.map((person, index) => (
-        <div className="guest-row" key={index}>
-          <label>
-            Name
-            <input
-              value={person.name}
-              onChange={(event) =>
-                onChange(people.map((item, itemIndex) => (itemIndex === index ? { ...item, name: event.target.value } : item)))
-              }
-            />
-          </label>
-          <label>
-            Email
-            <input
-              type="email"
-              value={person.email}
-              onChange={(event) =>
-                onChange(people.map((item, itemIndex) => (itemIndex === index ? { ...item, email: event.target.value } : item)))
-              }
-            />
-          </label>
-          <button
-            className="btn btn-ghost btn-compact"
-            type="button"
-            onClick={() => onChange(people.filter((_, itemIndex) => itemIndex !== index))}
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-      <button className="btn btn-ghost btn-compact" type="button" onClick={() => onChange([...people, { name: "", email: "" }])}>
-        Add another
-      </button>
-    </fieldset>
-  );
-}
+type DirectoryRow = { id: string; email: string; displayName: string; role?: string };
 
-function InviteForm({
-  legend,
-  busy,
-  onSubmit,
-}: {
-  legend: string;
-  busy: boolean;
-  onSubmit: (people: Guest[]) => Promise<void>;
-}) {
-  const [people, setPeople] = useState<Guest[]>([{ name: "", email: "" }]);
-  const [error, setError] = useState("");
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    try {
-      const guests = inviteGuests(people);
-      if (guests.length === 0) {
-        setError("Add a name and an email address.");
-        return;
-      }
-      await onSubmit(guests);
-      setPeople([{ name: "", email: "" }]);
-    } catch (err) {
-      setError(userFacingError(err, "Could not prepare the invite."));
+function peopleForRole(
+  role: "researcher" | "senior_researcher",
+  directory: DirectoryRow[],
+  projects: ProjectRow[],
+  invites: InviteRow[],
+  excludeEmails: string[] = [],
+) {
+  const blocked = new Set(excludeEmails.map((email) => email.trim().toLowerCase()).filter(Boolean));
+  const rows: PersonOption[] = [];
+  for (const person of directory) {
+    if (person.role !== role || !person.email.trim()) continue;
+    rows.push({ name: person.displayName || person.email, email: person.email });
+  }
+  for (const project of projects) {
+    const members = role === "researcher" ? project.researchers : project.seniorResearchers;
+    for (const member of members ?? []) {
+      const account = directory.find((item) => item.id === member.uid);
+      if (!account?.email) continue;
+      rows.push({ name: member.name || account.displayName || account.email, email: account.email });
     }
   }
+  for (const invite of invites) {
+    if ((invite.role || "researcher") !== role || !invite.guestEmail) continue;
+    rows.push({ name: invite.guestName || invite.guestEmail, email: invite.guestEmail });
+  }
+  return mergePersonOptions(rows).filter((person) => !blocked.has(person.email.trim().toLowerCase()));
+}
 
-  return (
-    <form className="fields" onSubmit={(event) => void submit(event)}>
-      <GuestList legend={legend} people={people} onChange={setPeople} />
-      <p className="quiet">Name and email. They join from the invite.</p>
-      {error ? <p className="error">{error}</p> : null}
-      <button className="btn btn-primary btn-compact" type="submit" disabled={busy}>
-        Prepare invite
-      </button>
-    </form>
-  );
+function projectTakenEmails(project: ProjectRow, invites: InviteRow[], directory: DirectoryRow[]) {
+  const emails: string[] = [];
+  for (const member of [...(project.researchers ?? []), ...(project.seniorResearchers ?? [])]) {
+    const account = directory.find((item) => item.id === member.uid);
+    if (account?.email) emails.push(account.email);
+  }
+  for (const invite of invites) {
+    if (invite.projectId === project.id && invite.status === "open" && invite.guestEmail) emails.push(invite.guestEmail);
+  }
+  return emails;
 }
 
 function projectMail(
   project: ProjectRow,
-  directory: { id: string; email: string; displayName: string }[],
+  directory: DirectoryRow[],
 ) {
   const address = (person: Person): EmailAddress => {
     const account = directory.find((item) => item.id === person.uid);
@@ -299,12 +257,20 @@ export function AdminProjectsPage() {
     summary: "",
     researchArea: "",
     note: "",
-    researchers: [{ name: "", email: "" }] as Guest[],
-    seniors: [{ name: "", email: "" }] as Guest[],
+    researchers: [] as Guest[],
+    seniors: [] as Guest[],
   });
   const [prepared, setPrepared] = useState<EmailDraft[]>([]);
   const [view, setView] = useState("attention");
-  const [directory, setDirectory] = useState<{ id: string; email: string; displayName: string }[]>([]);
+  const [directory, setDirectory] = useState<DirectoryRow[]>([]);
+  const researcherOptions = useMemo(
+    () => peopleForRole("researcher", directory, projects, invites),
+    [directory, projects, invites],
+  );
+  const seniorOptions = useMemo(
+    () => peopleForRole("senior_researcher", directory, projects, invites),
+    [directory, projects, invites],
+  );
 
   async function reload() {
     const [inviteRows, meetingRows, matchRows, directoryRows] = await Promise.all([
@@ -347,8 +313,8 @@ export function AdminProjectsPage() {
         summary: "",
         researchArea: "",
         note: "",
-        researchers: [{ name: "", email: "" }],
-        seniors: [{ name: "", email: "" }],
+        researchers: [],
+        seniors: [],
       });
       setAdding(false);
       setAwardLink(link);
@@ -365,8 +331,8 @@ export function AdminProjectsPage() {
       );
       setNotice(
         created.invites.length > 0
-          ? "TRI AI Saturdays Award project added. Send the invite email. Each person creates an account, then joins the project."
-          : "TRI AI Saturdays Award project added. Add a researcher or a Senior Researcher to send an invite.",
+          ? "TRI AI Saturdays Research Award project added. Send the invite email. Each person creates an account, then joins the project."
+          : "TRI AI Saturdays Research Award project added. Add a researcher or a Senior Researcher to send an invite.",
       );
       const title = draft.title.trim();
       void ensureProjectDrive({
@@ -378,13 +344,13 @@ export function AdminProjectsPage() {
         ],
         documents: [
           { name: "Project overview", markdown: blocksToMarkdown(overviewBlocks({ title, status: "scoping", health: "green" })) },
-          { name: "Project Charter", markdown: blocksToMarkdown(charterBlocks(title, { scope: "", roles: "", cadence: "", resources: "", integrity: "", authorship: "", release: "" }, false)) },
+          { name: "Project Charter", markdown: blocksToMarkdown(charterBlocks(title, EMPTY_CHARTER, false)) },
           { name: "Scoping notes", markdown: blocksToMarkdown(scopingNotesBlocks({ title })) },
         ],
       }).catch((err: unknown) => setError(userFacingError(err, "Could not create the Google Drive folder.")));
       await reload();
     } catch (err) {
-      setError(userFacingError(err, "Could not add this TRI AI Saturdays Award project."));
+      setError(userFacingError(err, "Could not add this TRI AI Saturdays Research Award project."));
     } finally {
       setBusy("");
     }
@@ -395,7 +361,7 @@ export function AdminProjectsPage() {
     await navigator.clipboard.writeText(link).catch(() => undefined);
     setError("");
     setAwardLink(link);
-    setNotice("TRI AI Saturdays Award invite link copied.");
+    setNotice("TRI AI Saturdays Research Award invite link copied.");
   }
 
   async function onInvite(project: ProjectRow, role: "researcher" | "senior_researcher", people: Guest[]) {
@@ -454,9 +420,20 @@ export function AdminProjectsPage() {
     setNotice("");
     setBusy(`${project.id}:charter`);
     try {
+      const charter = await getCharter(project.id);
+      const synced = await syncCharterToDrive(
+        project.id,
+        project.title || "Project",
+        charter,
+        true,
+        { interactive: true },
+      );
+      if (synced !== "updated") {
+        throw new Error("Could not update the Project Charter Google Doc. Sign in with Google and try again.");
+      }
       await markProjectCharterSigned(project.id);
       await reload();
-      setNotice(`Project Charter recorded for ${project.title || "this project"}.`);
+      setNotice(`Project Charter recorded and synced for ${project.title || "this project"}.`);
     } catch (err) {
       setError(userFacingError(err, "Could not record the Project Charter."));
     } finally {
@@ -523,19 +500,17 @@ export function AdminProjectsPage() {
         </div>
         {adding ? null : (
           <button className="btn btn-primary" type="button" onClick={() => setAdding(true)}>
-            Add a TRI AI Saturdays Award project
+            Add a TRI AI Saturdays Research Award project
           </button>
         )}
       </div>
       {adding ? (
-        <form className="fields" onSubmit={(event) => void onCreate(event)}>
+        <form className="fields has-dismiss" onSubmit={(event) => void onCreate(event)}>
+          <CloseButton label="Close award form" className="btn-compact" onClick={() => setAdding(false)} />
           <div className="archive-head">
-            <h2><Mark name="award">Add a TRI AI Saturdays Award project</Mark></h2>
-            <button className="btn btn-ghost btn-compact" type="button" onClick={() => setAdding(false)}>
-              Close
-            </button>
+            <h2><Mark name="award">Add a TRI AI Saturdays Research Award project</Mark></h2>
           </div>
-          <p className="quiet">Add the researchers and a Senior Researcher by name and email.</p>
+          <p className="quiet">Search for people already on the programme, or invite someone new.</p>
           <label>
             Title
             <input
@@ -551,24 +526,27 @@ export function AdminProjectsPage() {
               onChange={(event) => setDraft({ ...draft, summary: event.target.value })}
             />
           </label>
-          <label>
-            Research area
-            <input
-              value={draft.researchArea}
-              onChange={(event) => setDraft({ ...draft, researchArea: event.target.value })}
-            />
-          </label>
+          <SearchSelect
+            label="Research area"
+            options={optionsFrom(RESEARCH_AREA_OPTIONS)}
+            value={draft.researchArea}
+            onChange={(researchArea) => setDraft({ ...draft, researchArea })}
+            allowCustom
+            placeholder="Search research areas…"
+          />
           <label>
             Note for the researchers
             <textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} />
           </label>
-          <GuestList
+          <PersonPicker
             legend="Researchers"
+            options={researcherOptions}
             people={draft.researchers}
             onChange={(researchers) => setDraft({ ...draft, researchers })}
           />
-          <GuestList
+          <PersonPicker
             legend="Senior Researchers"
+            options={seniorOptions}
             people={draft.seniors}
             onChange={(seniors) => setDraft({ ...draft, seniors })}
           />
@@ -582,13 +560,18 @@ export function AdminProjectsPage() {
       {notice ? (
         <div className="notice" style={{ marginTop: 16 }}>
           <p>{notice}</p>
-          {awardLink && notice.includes("TRI AI Saturdays Award") ? (
+          {awardLink && notice.includes("TRI AI Saturdays Research Award") ? (
             <p>
               Award page: <a href={awardLink}>{awardLink}</a>
             </p>
           ) : null}
-          {prepared.map((draftMail) => (
-            <EmailSupport key={`${draftMail.subject}:${draftMail.to.map((person) => person.email).join(",")}`} draft={draftMail} />
+          {prepared.map((draftMail, index) => (
+            <EmailSupport
+              key={`${draftMail.subject}:${draftMail.to.map((person) => person.email).join(",")}`}
+              label="Invite email"
+              draft={draftMail}
+              autoOpen={index === 0}
+            />
           ))}
         </div>
       ) : null}
@@ -629,8 +612,8 @@ export function AdminProjectsPage() {
                   <Link to={`/dashboard/projects/${project.id}`}>{project.title || "Untitled project"}</Link>
                 </h3>
                 <div className="project-meta">
+                  <span className="quiet">{projectTypeLabel(project)}</span>
                   {project.researchArea ? <span className="quiet">{project.researchArea}</span> : null}
-                  {project.awardId ? <span className="quiet">TRI AI Saturdays Award</span> : null}
                   {project.status ? <StatusChip status={project.status} /> : null}
                   <HealthMark health={project.health} />
                   {project.awardId ? (
@@ -697,20 +680,31 @@ export function AdminProjectsPage() {
                       </button>
                     </p>
                   ) : null}
-                  <details className="fold">
-                    <summary>Project email</summary>
-                    <div className="fold-body">
-                      <EmailSupport draft={projectMail(project, directory)} />
-                    </div>
-                  </details>
-                  <InviteForm
+                  <EmailSupport label="Project email" draft={projectMail(project, directory)} />
+                  <PersonInviteForm
                     legend="Invite a Researcher"
+                    options={peopleForRole(
+                      "researcher",
+                      directory,
+                      projects,
+                      invites,
+                      projectTakenEmails(project, invites, directory),
+                    )}
                     busy={busy !== ""}
+                    hint="Search the programme, or invite someone new. They join from the invite."
                     onSubmit={(people) => onInvite(project, "researcher", people)}
                   />
-                  <InviteForm
+                  <PersonInviteForm
                     legend="Invite a Senior Researcher"
+                    options={peopleForRole(
+                      "senior_researcher",
+                      directory,
+                      projects,
+                      invites,
+                      projectTakenEmails(project, invites, directory),
+                    )}
                     busy={busy !== ""}
+                    hint="Search the programme, or invite someone new. They join from the invite."
                     onSubmit={(people) => onInvite(project, "senior_researcher", people)}
                   />
                   {openInvites.length > 0 ? (
@@ -726,23 +720,14 @@ export function AdminProjectsPage() {
                             <a className="btn btn-ghost btn-compact" href={inviteHref(invite.id)}>
                               Open invite
                             </a>
-                            <button
-                              className="btn btn-ghost btn-compact"
-                              type="button"
+                            <CloseButton
+                              label="Close invite link"
+                              className="btn-compact"
                               disabled={busy !== ""}
                               onClick={() => void onRevoke(invite.id)}
-                            >
-                              Close link
-                            </button>
+                            />
                           </span>
-                          {joinDraft(invite) ? (
-                            <details className="fold">
-                              <summary>Email</summary>
-                              <div className="fold-body">
-                                <EmailSupport draft={joinDraft(invite)} />
-                              </div>
-                            </details>
-                          ) : null}
+                          {joinDraft(invite) ? <EmailSupport label="Invite email" draft={joinDraft(invite)} /> : null}
                         </li>
                       ))}
                     </ul>

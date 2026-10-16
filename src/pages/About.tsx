@@ -4,9 +4,9 @@ export function AboutPage() {
       <header className="page-intro">
         <div className="container">
           <p className="mono">About TRI AI Research</p>
-          <h1>The Researcher and Senior Researcher Programme.</h1>
+          <h1>The TRI AI Research Mentorship Programme.</h1>
           <p className="lede">
-            TRI AI reviews applications, matches Senior Researchers, and supports the project.
+            TRI AI reviews applications, matches Senior Researchers, and supports mentored research projects.
           </p>
         </div>
       </header>

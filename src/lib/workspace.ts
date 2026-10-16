@@ -25,24 +25,64 @@ export type WorkspaceProject = {
 };
 
 export type CharterRecord = {
-  scope: string;
-  roles: string;
+  objectives: string;
+  outOfScope: string;
+  duration: string;
+  researcherDuties: string;
+  seniorDuties: string;
+  triDuties: string;
   cadence: string;
+  meetingFormat: string;
   resources: string;
   integrity: string;
+  risks: string;
   authorship: string;
+  ip: string;
   release: string;
+  successCriteria: string;
+  communication: string;
+  notes: string;
 };
 
 export const EMPTY_CHARTER: CharterRecord = {
-  scope: "",
-  roles: "",
+  objectives: "",
+  outOfScope: "",
+  duration: "",
+  researcherDuties: "",
+  seniorDuties: "",
+  triDuties: "",
   cadence: "",
+  meetingFormat: "",
   resources: "",
   integrity: "",
+  risks: "",
   authorship: "",
+  ip: "",
   release: "",
+  successCriteria: "",
+  communication: "",
+  notes: "",
 };
+
+export const CHARTER_FIELD_LABELS: { key: keyof CharterRecord; label: string }[] = [
+  { key: "objectives", label: "Objectives" },
+  { key: "outOfScope", label: "Out of scope" },
+  { key: "duration", label: "Duration" },
+  { key: "researcherDuties", label: "Researcher responsibilities" },
+  { key: "seniorDuties", label: "Senior Researcher responsibilities" },
+  { key: "triDuties", label: "TRI AI responsibilities" },
+  { key: "cadence", label: "Meeting cadence" },
+  { key: "meetingFormat", label: "Meeting format" },
+  { key: "resources", label: "Resources" },
+  { key: "integrity", label: "Integrity and ethics" },
+  { key: "risks", label: "Risks" },
+  { key: "authorship", label: "Authorship" },
+  { key: "ip", label: "Intellectual property" },
+  { key: "release", label: "Release expectations" },
+  { key: "successCriteria", label: "Success criteria" },
+  { key: "communication", label: "Communication" },
+  { key: "notes", label: "Additional notes" },
+];
 
 export type MilestoneRecord = {
   id: string;
@@ -195,27 +235,49 @@ export async function getCharter(projectId: string) {
   const snapshot = await getDoc(doc(db, "projects", projectId, "charter", "current"));
   if (!snapshot.exists()) return EMPTY_CHARTER;
   const data = snapshot.data();
+  const legacyScope = text(data.scope);
+  const legacyRoles = text(data.roles);
   return {
-    scope: text(data.scope),
-    roles: text(data.roles),
+    objectives: text(data.objectives) || legacyScope,
+    outOfScope: text(data.outOfScope),
+    duration: text(data.duration),
+    researcherDuties: text(data.researcherDuties) || legacyRoles,
+    seniorDuties: text(data.seniorDuties),
+    triDuties: text(data.triDuties),
     cadence: text(data.cadence),
+    meetingFormat: text(data.meetingFormat),
     resources: text(data.resources),
     integrity: text(data.integrity),
+    risks: text(data.risks),
     authorship: text(data.authorship),
+    ip: text(data.ip),
     release: text(data.release),
+    successCriteria: text(data.successCriteria),
+    communication: text(data.communication),
+    notes: text(data.notes),
   };
 }
 
 export async function saveCharter(projectId: string, charter: CharterRecord, uid: string) {
   const db = dbOrThrow();
   const next = {
-    scope: clip(charter.scope, 1800),
-    roles: clip(charter.roles, 1800),
-    cadence: clip(charter.cadence, 1800),
-    resources: clip(charter.resources, 1800),
-    integrity: clip(charter.integrity, 1800),
-    authorship: clip(charter.authorship, 1800),
-    release: clip(charter.release, 1800),
+    objectives: clip(charter.objectives, 1999),
+    outOfScope: clip(charter.outOfScope, 1999),
+    duration: clip(charter.duration, 1999),
+    researcherDuties: clip(charter.researcherDuties, 1999),
+    seniorDuties: clip(charter.seniorDuties, 1999),
+    triDuties: clip(charter.triDuties, 1999),
+    cadence: clip(charter.cadence, 1999),
+    meetingFormat: clip(charter.meetingFormat, 1999),
+    resources: clip(charter.resources, 1999),
+    integrity: clip(charter.integrity, 1999),
+    risks: clip(charter.risks, 1999),
+    authorship: clip(charter.authorship, 1999),
+    ip: clip(charter.ip, 1999),
+    release: clip(charter.release, 1999),
+    successCriteria: clip(charter.successCriteria, 1999),
+    communication: clip(charter.communication, 1999),
+    notes: clip(charter.notes, 1999),
     updatedBy: uid,
     updatedAt: serverTimestamp(),
   };

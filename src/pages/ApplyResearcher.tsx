@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmailSupport } from "../components/EmailSupport";
 import { ProposalRead } from "../components/ProposalRead";
+import { SearchSelect, optionsFrom } from "../components/SearchSelect";
 import { named, proposalSubmittedEmail, type EmailDraft } from "../lib/email";
 import { useAuth } from "../lib/auth";
 import {
@@ -15,7 +16,15 @@ import {
   saveProposal,
   writeLocalProposal,
 } from "../lib/records";
-import { EMPTY_PROPOSAL, PROPOSAL_LABELS, PROPOSAL_STEPS, type ProposalDraft } from "../types/domain";
+import {
+  APPLICANT_STATUS_OPTIONS,
+  EMPTY_PROPOSAL,
+  PROPOSAL_LABELS,
+  PROPOSAL_STEPS,
+  RESEARCH_AREA_OPTIONS,
+  SENIOR_COUNTRY_OPTIONS,
+  type ProposalDraft,
+} from "../types/domain";
 import { userFacingError } from "../lib/errors";
 
 type SavedProposal = ProposalDraft & { id: string; status?: string; route?: string };
@@ -187,7 +196,9 @@ export function ApplyResearcherPage() {
         <div className="container">
           <p className="mono">Direct proposal</p>
           <h1>Propose a research project.</h1>
-          <p className="lede">Submit a research proposal.</p>
+          <p className="lede">
+            Share a structured idea for TRI AI review. Approved proposals move into Senior Researcher matching.
+          </p>
         </div>
       </header>
       <section className="container form-layout">
@@ -242,31 +253,73 @@ export function ApplyResearcherPage() {
                 }))}
               />
             ) : (
-              keys.map((key) => (
-                <label key={key}>
-                  <span>{PROPOSAL_LABELS[key]}</span>
-                  {hints[key] ? <span className="hint">{hints[key]}</span> : null}
-                  {long.has(key) ? (
-                    <textarea
-                      value={draft[key]}
-                      rows={key === "summary" || key === "methodology" ? 6 : 4}
-                      onChange={(event) => update(key, event.target.value)}
+              keys.map((key) => {
+                if (key === "location") {
+                  return (
+                    <SearchSelect
+                      key={key}
+                      label={PROPOSAL_LABELS[key]}
+                      options={optionsFrom(SENIOR_COUNTRY_OPTIONS)}
+                      value={draft.location}
+                      onChange={(location) => update("location", location)}
+                      allowCustom
+                      placeholder="Type to search countries…"
                     />
-                  ) : (
-                    <input
-                      value={draft[key]}
-                      autoComplete={key === "name" ? "name" : key === "github" ? "url" : undefined}
-                      inputMode={key === "github" || key === "scholar" ? "url" : undefined}
-                      placeholder={key === "github" || key === "scholar" ? "https://" : undefined}
-                      onChange={(event) => update(key, event.target.value)}
+                  );
+                }
+                if (key === "applicantStatus") {
+                  return (
+                    <SearchSelect
+                      key={key}
+                      label={PROPOSAL_LABELS[key]}
+                      options={optionsFrom(APPLICANT_STATUS_OPTIONS)}
+                      value={draft.applicantStatus}
+                      onChange={(applicantStatus) => update("applicantStatus", applicantStatus)}
+                      allowCustom
+                      placeholder="Search status…"
                     />
-                  )}
-                </label>
-              ))
+                  );
+                }
+                if (key === "researchArea") {
+                  return (
+                    <SearchSelect
+                      key={key}
+                      label={PROPOSAL_LABELS[key]}
+                      hint={hints[key]}
+                      options={optionsFrom(RESEARCH_AREA_OPTIONS)}
+                      value={draft.researchArea}
+                      onChange={(researchArea) => update("researchArea", researchArea)}
+                      allowCustom
+                      placeholder="Search research areas…"
+                    />
+                  );
+                }
+                return (
+                  <label key={key}>
+                    <span>{PROPOSAL_LABELS[key]}</span>
+                    {hints[key] ? <span className="hint">{hints[key]}</span> : null}
+                    {long.has(key) ? (
+                      <textarea
+                        value={draft[key]}
+                        rows={key === "summary" || key === "methodology" ? 6 : 4}
+                        onChange={(event) => update(key, event.target.value)}
+                      />
+                    ) : (
+                      <input
+                        value={draft[key]}
+                        autoComplete={key === "name" ? "name" : key === "github" ? "url" : undefined}
+                        inputMode={key === "github" || key === "scholar" ? "url" : undefined}
+                        placeholder={key === "github" || key === "scholar" ? "https://" : undefined}
+                        onChange={(event) => update(key, event.target.value)}
+                      />
+                    )}
+                  </label>
+                );
+              })
             )}
           </div>
           {message ? <p className="quiet" style={{ marginTop: 16 }}>{message}</p> : null}
-          <EmailSupport draft={mail} />
+          <EmailSupport label="Submission email" draft={mail} autoOpen />
           {error ? <p className="error">{error}</p> : null}
           <div className="form-actions">
             <button className="btn btn-ghost" type="button" disabled={step === 0} onClick={() => setStep(step - 1)}>

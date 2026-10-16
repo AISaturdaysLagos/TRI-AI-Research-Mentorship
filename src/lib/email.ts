@@ -273,14 +273,14 @@ export function projectJoinEmail(input: {
   return {
     to: [input.person],
     cc: [],
-    subject: input.award ? `TRI AI Saturdays Award — ${input.title}` : `Join ${input.title}`,
+    subject: input.award ? `TRI AI Saturdays Research Award — ${input.title}` : `Join ${input.title}`,
     attachments: [],
     body: letter([
       hello([input.person]),
       input.award
-        ? `You are invited to join “${input.title}” as ${place} on a TRI AI Saturdays Award.`
+        ? `You are invited to join “${input.title}” as ${place} on a TRI AI Saturdays Research Award.`
         : `You are invited to join “${input.title}” as ${place}.`,
-      input.page ? `TRI AI Saturdays Award page: ${input.page}` : "",
+      input.page ? `TRI AI Saturdays Research Award page: ${input.page}` : "",
       "Create an account, then join.",
       input.link,
     ]),
@@ -291,12 +291,12 @@ export function awardWelcomeEmail(input: { title: string; researchers: EmailAddr
   return {
     to: input.researchers,
     cc: [],
-    subject: `TRI AI Saturdays Award — ${input.title}`,
+    subject: `TRI AI Saturdays Research Award — ${input.title}`,
     attachments: [],
     body: letter([
       hello(input.researchers),
       "Welcome.",
-      `A Senior Researcher is ready to work with you on “${input.title}.” Write the scoping notes with TRI AI.`,
+      `A Senior Researcher is ready to work with you on “${input.title}.” Open the award page, then continue in the project workspace.`,
       input.link ? `Next step: ${input.link}` : "",
     ]),
   };

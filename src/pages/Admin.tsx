@@ -1,24 +1,24 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Navigate, Outlet } from "react-router-dom";
 import { AttentionNotices } from "../components/AttentionNotices";
-import { Icon, Mark, type IconName } from "../components/Icon";
-import { EmailSupport } from "../components/EmailSupport";
+import { Icon, type IconName } from "../components/Icon";
 import { Loader } from "../components/Loader";
 import { StatusChip } from "../components/StatusChip";
 import { useAuth } from "../lib/auth";
-import { named, seniorWelcomeEmail } from "../lib/email";
-import { listDirectory, listProjects, listProposals, listSeniorProfiles, updateMentorPool } from "../lib/records";
-import type { MentorAvailability } from "../types/domain";
+import { listProjects, listProposals } from "../lib/records";
 import { userFacingError } from "../lib/errors";
+import { SearchSelect } from "../components/SearchSelect";
 
-const links: { to: string; label: string; icon: IconName; end?: boolean; adminOnly?: boolean }[] = [
-  { to: "/admin", label: "Overview", icon: "overview", end: true },
+export { AdminMentorsPage, AdminResearchersPage } from "./AdminPeople";
+
+const links: { to: string; label: string; icon: IconName; adminOnly?: boolean }[] = [
   { to: "/admin/tasks", label: "Tasks", icon: "task", adminOnly: true },
   { to: "/admin/proposals", label: "Proposals", icon: "document" },
   { to: "/admin/matching", label: "Matching", icon: "match" },
   { to: "/admin/meetings", label: "Scoping meetings", icon: "meeting", adminOnly: true },
   { to: "/admin/projects", label: "Projects", icon: "projects" },
-  { to: "/admin/mentors", label: "Senior Researchers", icon: "senior" },
+  { to: "/admin/researchers", label: "Researchers", icon: "researcher", adminOnly: true },
+  { to: "/admin/mentors", label: "Senior Researchers", icon: "senior", adminOnly: true },
   { to: "/admin/reports", label: "Reports", icon: "report" },
 ];
 
@@ -39,7 +39,6 @@ export function AdminLayout() {
               <NavLink
                 key={link.to}
                 to={link.to}
-                end={link.end}
                 className={({ isActive }) => (isActive ? "is-active" : undefined)}
               >
                 <Icon name={link.icon} />
@@ -59,51 +58,11 @@ export function AdminLayout() {
   );
 }
 
-const overviewSteps = [
-  [
-    "01",
-    "Review",
-    "Read the proposal or the scoping notes.",
-  ],
-  [
-    "02",
-    "Ready for matching",
-    "Approve the proposal for matching.",
-  ],
-  [
-    "03",
-    "Send an opportunity",
-    "Send the proposal to a Senior Researcher.",
-  ],
-  [
-    "04",
-    "Record the response",
-    "Record whether the Senior Researcher accepts, asks for changes, or declines.",
-  ],
-  [
-    "05",
-    "Introduce and scope",
-    "Record the introduction, then set the scoping meeting.",
-  ],
-  [
-    "06",
-    "Active project",
-    "Mark the project scoped, record the signed Project Charter, then make it active.",
-  ],
-];
-
+/** `/admin` lands on Tasks for admins and Proposals for reviewers. */
 export function AdminHomePage() {
-  return (
-    <div className="card-grid">
-      {overviewSteps.map(([index, title, copy], step) => (
-        <article className="card" key={index}>
-          <p className="step-index">{index}</p>
-          <h3><Mark name={(["review", "match", "senior", "review", "meeting", "projects"] as IconName[])[step]}>{title}</Mark></h3>
-          <p>{copy}</p>
-        </article>
-      ))}
-    </div>
-  );
+  const { profile } = useAuth();
+  if (!profile) return null;
+  return <Navigate to={profile.role === "admin" ? "/admin/tasks" : "/admin/proposals"} replace />;
 }
 
 type ProposalRow = {
@@ -148,19 +107,27 @@ export function AdminProposalsPage() {
   return (
     <div>
       <div className="filters">
-        <select aria-label="Route" value={route} onChange={(event) => setRoute(event.target.value)}>
-          <option value="all">All routes</option>
-          <option value="direct">Direct proposal</option>
-          <option value="saturdays">TRI AI Saturdays Award</option>
-        </select>
-        <select aria-label="Status" value={status} onChange={(event) => setStatus(event.target.value)}>
-          <option value="all">All statuses</option>
-          {statuses.map((item) => (
-            <option key={item} value={item}>
-              {item.replaceAll("_", " ")}
-            </option>
-          ))}
-        </select>
+        <SearchSelect
+          label="Route"
+          options={[
+            { value: "all", label: "All routes" },
+            { value: "direct", label: "Direct proposal" },
+            { value: "saturdays", label: "TRI AI Saturdays Research Award" },
+          ]}
+          value={route}
+          onChange={setRoute}
+          placeholder="Route…"
+        />
+        <SearchSelect
+          label="Status"
+          options={[
+            { value: "all", label: "All statuses" },
+            ...statuses.map((item) => ({ value: item, label: item.replaceAll("_", " ") })),
+          ]}
+          value={status}
+          onChange={setStatus}
+          placeholder="Status…"
+        />
       </div>
       {visible.length === 0 ? (
         <div className="empty">No proposals are waiting.</div>
@@ -184,7 +151,7 @@ export function AdminProposalsPage() {
                     </Link>
                   </td>
                   <td>{row.name || "—"}</td>
-                  <td>{row.route === "saturdays" ? "TRI AI Saturdays Award" : "Direct proposal"}</td>
+                  <td>{row.route === "saturdays" ? "TRI AI Saturdays Research Award" : "Direct proposal"}</td>
                   <td>{row.status ? <StatusChip status={row.status} /> : "—"}</td>
                 </tr>
               ))}
@@ -192,135 +159,6 @@ export function AdminProposalsPage() {
           </table>
         </div>
       )}
-    </div>
-  );
-}
-
-const mentorAvailability: MentorAvailability[] = [
-  "available",
-  "limited_capacity",
-  "at_capacity",
-  "temporarily_unavailable",
-  "inactive",
-];
-
-type MentorRow = {
-  id: string;
-  name?: string;
-  affiliation?: string;
-  researchAreas?: string;
-  methods?: string;
-  capacity?: string;
-  availability?: MentorAvailability;
-  poolStatus?: string;
-};
-
-export function AdminMentorsPage() {
-  const { profile } = useAuth();
-  const [rows, setRows] = useState<MentorRow[]>([]);
-  const [directory, setDirectory] = useState<{ id: string; email: string; displayName: string }[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (profile?.role !== "admin") return;
-    Promise.all([listSeniorProfiles(), listDirectory()])
-      .then(([items, people]) => {
-        setRows(items as MentorRow[]);
-        setDirectory(people);
-      })
-      .catch((err: unknown) => setError(userFacingError(err, "Could not load the Senior Researcher pool.")))
-      .finally(() => setLoaded(true));
-  }, [profile?.role]);
-
-  async function save(row: MentorRow, availability: MentorAvailability, poolStatus: "pending" | "in_pool") {
-    setRows((current) => current.map((item) => (item.id === row.id ? { ...item, availability, poolStatus } : item)));
-    try {
-      await updateMentorPool(row.id, availability, poolStatus);
-    } catch (err) {
-      setError(userFacingError(err, "Could not update the Senior Researcher."));
-    }
-  }
-
-  if (profile?.role !== "admin") {
-    return <div className="empty">Senior Researcher pool management is limited to TRI AI admin.</div>;
-  }
-  if (error) return <p className="error">{error}</p>;
-  if (!loaded) return <Loader label="Loading Senior Researchers" />;
-  if (rows.length === 0) return <div className="empty">No Senior Researcher profiles in the pool yet.</div>;
-
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Senior Researcher</th>
-            <th>Expertise</th>
-            <th>Capacity</th>
-            <th>Availability</th>
-            <th>Pool</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <td>
-                {row.name || "Unnamed"}
-                <br />
-                <span className="quiet">{row.affiliation || "—"}</span>
-              </td>
-              <td>
-                {row.researchAreas || "—"}
-                <br />
-                <span className="quiet">{row.methods || ""}</span>
-              </td>
-              <td>{row.capacity || "—"}</td>
-              <td>
-                <select
-                  aria-label={`Availability for ${row.name || "Senior Researcher"}`}
-                  value={row.availability || "available"}
-                  onChange={(event) =>
-                    void save(row, event.target.value as MentorAvailability, row.poolStatus === "in_pool" ? "in_pool" : "pending")
-                  }
-                >
-                  {mentorAvailability.map((item) => (
-                    <option key={item} value={item}>
-                      {item.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </select>
-              </td>
-              <td>
-                <select
-                  aria-label={`Pool status for ${row.name || "Senior Researcher"}`}
-                  value={row.poolStatus === "in_pool" ? "in_pool" : "pending"}
-                  onChange={(event) =>
-                    void save(
-                      row,
-                      row.availability || "available",
-                      event.target.value === "in_pool" ? "in_pool" : "pending",
-                    )
-                  }
-                >
-                  <option value="pending">Pending</option>
-                  <option value="in_pool">In the pool</option>
-                </select>
-                {row.poolStatus === "in_pool" ? (
-                  <EmailSupport
-                    draft={seniorWelcomeEmail({
-                      senior: named(
-                        row.name || directory.find((person) => person.id === row.id)?.displayName || "Senior Researcher",
-                        directory.find((person) => person.id === row.id)?.email || "",
-                      ),
-                      areas: row.researchAreas || "",
-                    })}
-                  />
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

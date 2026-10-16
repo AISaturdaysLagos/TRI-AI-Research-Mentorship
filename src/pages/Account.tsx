@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader } from "../components/Loader";
 import { TimezoneField } from "../components/MeetingTimePicker";
+import { SearchSelect, optionsFrom } from "../components/SearchSelect";
+import { SeniorProfileFields } from "../components/SeniorProfileFields";
 import { useAuth } from "../lib/auth";
 import { PROGRAMME_ZONE, loadTimezones, saveTimezone } from "../lib/timezones";
 import {
@@ -14,22 +16,15 @@ import {
   seniorDraftFromRecord,
 } from "../lib/records";
 import {
+  APPLICANT_STATUS_OPTIONS,
+  COUNTRY_OPTIONS,
   EMPTY_RESEARCHER_PROFILE,
   EMPTY_SENIOR,
   PROPOSAL_LABELS,
-  type MentorAvailability,
   type ResearcherProfileDraft,
   type SeniorProfileDraft,
 } from "../types/domain";
 import { userFacingError } from "../lib/errors";
-
-const availability: MentorAvailability[] = [
-  "available",
-  "limited_capacity",
-  "at_capacity",
-  "temporarily_unavailable",
-  "inactive",
-];
 
 const researcherFields: (keyof ResearcherProfileDraft)[] = [
   "affiliation",
@@ -166,111 +161,57 @@ export function AccountPage() {
             <TimezoneField label="Your time zone" value={zone} onChange={setZone} />
             <p className="quiet">Shown on your meetings.</p>
             {profile.role === "researcher"
-              ? researcherFields.map((key) => (
-                  <label key={key}>
-                    {PROPOSAL_LABELS[key]}
-                    {key === "bio" || key === "scholar" ? (
-                      <textarea
-                        value={researcher[key]}
-                        onChange={(event) => setResearcher({ ...researcher, [key]: event.target.value })}
+              ? researcherFields.map((key) => {
+                  if (key === "location") {
+                    return (
+                      <SearchSelect
+                        key={key}
+                        label={PROPOSAL_LABELS[key]}
+                        options={optionsFrom(COUNTRY_OPTIONS)}
+                        value={researcher.location}
+                        onChange={(location) => setResearcher({ ...researcher, location })}
+                        allowCustom
+                        placeholder="Type to search countries…"
                       />
-                    ) : (
-                      <input
-                        value={researcher[key]}
-                        onChange={(event) => setResearcher({ ...researcher, [key]: event.target.value })}
+                    );
+                  }
+                  if (key === "applicantStatus") {
+                    return (
+                      <SearchSelect
+                        key={key}
+                        label={PROPOSAL_LABELS[key]}
+                        options={optionsFrom(APPLICANT_STATUS_OPTIONS)}
+                        value={researcher.applicantStatus}
+                        onChange={(applicantStatus) => setResearcher({ ...researcher, applicantStatus })}
+                        allowCustom
+                        placeholder="Search status…"
                       />
-                    )}
-                  </label>
-                ))
+                    );
+                  }
+                  return (
+                    <label key={key}>
+                      {PROPOSAL_LABELS[key]}
+                      {key === "bio" || key === "scholar" ? (
+                        <textarea
+                          value={researcher[key]}
+                          onChange={(event) => setResearcher({ ...researcher, [key]: event.target.value })}
+                        />
+                      ) : (
+                        <input
+                          value={researcher[key]}
+                          onChange={(event) => setResearcher({ ...researcher, [key]: event.target.value })}
+                        />
+                      )}
+                    </label>
+                  );
+                })
               : null}
             {profile.role === "senior_researcher" ? (
-              <>
-                <div className="fields two">
-                  <label>
-                    Institution or organisation
-                    <input
-                      autoComplete="organization"
-                      value={senior.affiliation}
-                      onChange={(event) => setSenior({ ...senior, affiliation: event.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Current role
-                    <input
-                      value={senior.currentRole}
-                      onChange={(event) => setSenior({ ...senior, currentRole: event.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Country or location
-                    <input
-                      autoComplete="country-name"
-                      value={senior.country}
-                      onChange={(event) => setSenior({ ...senior, country: event.target.value })}
-                    />
-                  </label>
-                  <label>
-                    Projects at once
-                    <span className="hint">The most you would consider taking on at the same time.</span>
-                    <input
-                      inputMode="numeric"
-                      value={senior.capacity}
-                      onChange={(event) => setSenior({ ...senior, capacity: event.target.value })}
-                    />
-                  </label>
-                </div>
-                <label>
-                  Primary research areas
-                  <span className="hint">The areas where you can support a project.</span>
-                  <textarea
-                    rows={4}
-                    value={senior.researchAreas}
-                    onChange={(event) => setSenior({ ...senior, researchAreas: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Methods you can support
-                  <span className="hint">Technical areas you are comfortable supporting as a Senior Researcher.</span>
-                  <textarea
-                    rows={4}
-                    value={senior.methods}
-                    onChange={(event) => setSenior({ ...senior, methods: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Publications or projects
-                  <span className="hint">Up to three examples.</span>
-                  <textarea
-                    rows={4}
-                    value={senior.publications}
-                    onChange={(event) => setSenior({ ...senior, publications: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Meeting cadence
-                  <span className="hint">How often you can meet on an active project.</span>
-                  <input
-                    value={senior.cadence}
-                    onChange={(event) => setSenior({ ...senior, cadence: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Availability
-                  <span className="hint">Approximate availability over the next 6 months.</span>
-                  <select
-                    value={senior.availability}
-                    onChange={(event) =>
-                      setSenior({ ...senior, availability: event.target.value as MentorAvailability })
-                    }
-                  >
-                    {availability.map((item) => (
-                      <option key={item} value={item}>
-                        {item.replaceAll("_", " ")}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </>
+              <SeniorProfileFields
+                hideName
+                draft={{ ...senior, name: senior.name || name }}
+                onChange={setSenior}
+              />
             ) : null}
             {message ? <p className="quiet">{message}</p> : null}
             {error ? <p className="error">{error}</p> : null}

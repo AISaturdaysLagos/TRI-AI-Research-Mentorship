@@ -57,12 +57,12 @@ Open the URL Vite prints, usually http://localhost:5173/#/login. The **Demo acco
 | Reviewer | nia.reviewer@example.com |
 | Admin | tri.admin@example.com |
 
-One TRI AI Saturdays Award can include several researchers. A researcher belongs to only one TRI AI Saturdays Award project. A project can include several Senior Researchers, and a Senior Researcher can be on more than one project.
+One TRI AI Saturdays Research Award can include several researchers. A researcher belongs to only one TRI AI Saturdays Research Award project. A project can include several Senior Researchers, and a Senior Researcher can be on more than one project.
 
-- http://localhost:5173/#/award/saturdays-sample is the one TRI AI Saturdays Award for Ada, Chidi, and Amina.
+- http://localhost:5173/#/award/saturdays-sample is the one TRI AI Saturdays Research Award for Ada, Chidi, and Amina.
 - That award project lists those three researchers, with Kwame and Zainab as Senior Researchers.
 - Kwame is also on the Hausa project with Zainab, and on the published Yoruba project with Ifeoma.
-- An admin can copy an invite link from Projects. http://localhost:5173/#/join/join-flood-researcher adds a Researcher to the flood project. http://localhost:5173/#/join/join-flood-senior adds a Senior Researcher. Joining is their choice. A researcher who already belongs to that TRI AI Saturdays Award project is not added to a second one.
+- An admin can copy an invite link from Projects. http://localhost:5173/#/join/join-flood-researcher adds a Researcher to the flood project. http://localhost:5173/#/join/join-flood-senior adds a Senior Researcher. Joining is their choice. A researcher who already belongs to that TRI AI Saturdays Research Award project is not added to a second one.
 
 ## GitHub Pages demo
 

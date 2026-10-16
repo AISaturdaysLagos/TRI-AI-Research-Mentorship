@@ -3,7 +3,7 @@ import { accounts, signInAs, signOut } from "./helpers/auth";
 import { go, expectHeading } from "./helpers/nav";
 import { seedFixtures } from "./helpers/seed";
 
-test.describe("Join invites and TRI AI Saturdays Award", () => {
+test.describe("Join invites and TRI AI Saturdays Research Award", () => {
   test.beforeEach(() => {
     seedFixtures();
   });
@@ -22,10 +22,10 @@ test.describe("Join invites and TRI AI Saturdays Award", () => {
   test("award page as Ada", async ({ page }) => {
     await signInAs(page, accounts.ada);
     await go(page, "/award/saturdays-sample");
-    await expectHeading(page, "TRI AI Saturdays Award");
+    await expectHeading(page, "TRI AI Saturdays Research Award");
     await expect(page.getByText("Flood mapping from satellite imagery").first()).toBeVisible();
     await expect(page.getByText("Ada Okonkwo")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Save scoping notes" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open the project" })).toBeVisible();
     await signOut(page);
   });
 });

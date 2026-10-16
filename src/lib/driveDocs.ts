@@ -10,6 +10,8 @@ import {
   type ProjectDriveFile,
 } from "./projectDrive";
 import {
+  CHARTER_FIELD_LABELS,
+  EMPTY_CHARTER,
   OUTPUT_STATUSES,
   OUTPUT_TYPES,
   RESOURCE_TYPES,
@@ -24,6 +26,7 @@ export type DocBlock = { style: "h1" | "h2" | "p"; text: string };
 
 const LOCAL_DRIVE = "http://127.0.0.1:8787/drive-doc";
 const LOCAL_ENSURE = "http://127.0.0.1:8787/drive-ensure";
+const LOCAL_READ = "http://127.0.0.1:8787/drive-read";
 
 export function blocksToMarkdown(blocks: DocBlock[]) {
   return blocks
@@ -52,26 +55,95 @@ function line(text: string) {
   return trimmed || "—";
 }
 
+/** Canonical charter headings written to Drive — keep in sync with CHARTER_FIELD_LABELS. */
+export const CHARTER_DOC_FIELDS: { key: keyof CharterRecord; label: string }[] = CHARTER_FIELD_LABELS.map(
+  ({ key, label }) => ({ key, label }),
+);
+
+const CHARTER_HEADING_ALIASES: Record<string, keyof CharterRecord> = {
+  objectives: "objectives",
+  scope: "objectives",
+  "out of scope": "outOfScope",
+  duration: "duration",
+  "researcher responsibilities": "researcherDuties",
+  roles: "researcherDuties",
+  "senior researcher responsibilities": "seniorDuties",
+  "tri ai responsibilities": "triDuties",
+  "meeting cadence": "cadence",
+  cadence: "cadence",
+  "meeting format": "meetingFormat",
+  resources: "resources",
+  "integrity and ethics": "integrity",
+  "integrity and risk": "integrity",
+  integrity: "integrity",
+  risks: "risks",
+  authorship: "authorship",
+  "authorship and ip": "authorship",
+  "intellectual property": "ip",
+  "release expectations": "release",
+  "success criteria": "successCriteria",
+  communication: "communication",
+  "additional notes": "notes",
+  notes: "notes",
+};
+
 export function charterBlocks(projectTitle: string, charter: CharterRecord, signed: boolean): DocBlock[] {
   const blocks: DocBlock[] = [
     { style: "h1", text: "Project Charter" },
     { style: "p", text: `Project: ${projectTitle}` },
   ];
   if (signed) blocks.push({ style: "p", text: "Signed." });
-  const fields: [string, string][] = [
-    ["Scope", charter.scope],
-    ["Roles", charter.roles],
-    ["Cadence", charter.cadence],
-    ["Resources", charter.resources],
-    ["Integrity and risk", charter.integrity],
-    ["Authorship and IP", charter.authorship],
-    ["Release expectations", charter.release],
-  ];
-  for (const [label, value] of fields) {
+  for (const { key, label } of CHARTER_DOC_FIELDS) {
     blocks.push({ style: "h2", text: label });
-    blocks.push({ style: "p", text: line(value) });
+    blocks.push({ style: "p", text: line(charter[key]) });
   }
   return blocks;
+}
+
+function blankValue(value: string) {
+  const trimmed = value.trim();
+  return !trimmed || trimmed === "—";
+}
+
+function charterHasContent(charter: CharterRecord) {
+  return CHARTER_DOC_FIELDS.some(({ key }) => !blankValue(charter[key]));
+}
+
+/** Parse a Project Charter Google Doc (current or legacy headings) into the form record. */
+export function parseCharterMarkdown(markdown: string): CharterRecord {
+  const next: CharterRecord = { ...EMPTY_CHARTER };
+  const lines = markdown.split(/\n/);
+  let key: keyof CharterRecord | null = null;
+  const buckets: Partial<Record<keyof CharterRecord, string[]>> = {};
+  for (const raw of lines) {
+    const heading = /^##\s+(.+)$/.exec(raw.trim());
+    if (heading) {
+      key = CHARTER_HEADING_ALIASES[heading[1].trim().toLowerCase()] ?? null;
+      continue;
+    }
+    if (!key) continue;
+    const text = raw.replace(/^\*\*[^*]+:\*\*\s*/, "").trim();
+    if (!text || text === "—" || /^#\s/.test(text) || text.startsWith("Project:") || text === "Signed.") continue;
+    (buckets[key] ??= []).push(text);
+  }
+  for (const field of CHARTER_DOC_FIELDS) {
+    const parts = buckets[field.key];
+    if (parts?.length) next[field.key] = parts.join("\n");
+  }
+  return next;
+}
+
+/** Prefer non-empty Drive values; keep form values for fields the doc does not cover. */
+export function mergeCharterFromDoc(form: CharterRecord, fromDoc: CharterRecord): CharterRecord {
+  const next = { ...form };
+  for (const { key } of CHARTER_DOC_FIELDS) {
+    if (!blankValue(fromDoc[key])) next[key] = fromDoc[key];
+  }
+  return next;
+}
+
+function chartersEqual(a: CharterRecord, b: CharterRecord) {
+  return CHARTER_DOC_FIELDS.every(({ key }) => a[key].trim() === b[key].trim());
 }
 
 export function milestoneBlocks(projectTitle: string, item: Omit<MilestoneRecord, "id">): DocBlock[] {
@@ -196,12 +268,14 @@ function markdownToBlocks(markdown: string): DocBlock[] {
   return blocks.length > 0 ? blocks : [{ style: "p", text: "—" }];
 }
 
-async function driveToken() {
+async function driveToken(opts?: { interactive?: boolean }) {
+  const interactive = opts?.interactive !== false;
   const auth = firebaseAuth();
   const current = auth?.currentUser;
   if (!auth || !current) return null;
   if (!current.providerData.some((item) => item.providerId === "google.com")) return null;
   if (cached && cached.until > Date.now()) return cached.token;
+  if (!interactive) return null;
   const provider = new GoogleAuthProvider();
   provider.addScope(DOCUMENTS);
   provider.addScope(DRIVE);
@@ -331,6 +405,28 @@ async function driveFetch(token: string, url: string, init?: RequestInit) {
 }
 
 const DRIVE_CREATE = `${DRIVE_API}/files?fields=id,name,webViewLink&supportsAllDrives=true`;
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+const DOCUMENT_MIME = "application/vnd.google-apps.document";
+
+function escapeDriveQuery(value: string) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+async function findDriveChild(token: string, parentId: string, name: string, mimeType: string) {
+  const trimmed = name.trim();
+  if (!parentId || !trimmed) return null;
+  const q = [
+    `'${escapeDriveQuery(parentId)}' in parents`,
+    `name = '${escapeDriveQuery(trimmed)}'`,
+    `mimeType = '${mimeType}'`,
+    "trashed = false",
+  ].join(" and ");
+  const url =
+    `${DRIVE_API}/files?q=${encodeURIComponent(q)}` +
+    "&fields=files(id,name,webViewLink)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives";
+  const result = (await driveFetch(token, url)) as { files?: { id: string; name: string; webViewLink?: string }[] };
+  return result.files?.[0] ?? null;
+}
 
 async function createDriveFolder(token: string, name: string, parentId: string) {
   const created = (await driveFetch(token, DRIVE_CREATE, {
@@ -338,7 +434,7 @@ async function createDriveFolder(token: string, name: string, parentId: string) 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
-      mimeType: "application/vnd.google-apps.folder",
+      mimeType: FOLDER_MIME,
       parents: parentId ? [parentId] : undefined,
     }),
   })) as { id: string; name: string; webViewLink?: string };
@@ -350,13 +446,26 @@ async function createDriveFolder(token: string, name: string, parentId: string) 
   };
 }
 
+async function ensureDriveFolder(token: string, name: string, parentId: string) {
+  const existing = await findDriveChild(token, parentId, name, FOLDER_MIME);
+  if (existing) {
+    return {
+      id: existing.id,
+      name: existing.name || name,
+      url: existing.webViewLink || `https://drive.google.com/drive/folders/${existing.id}`,
+      kind: "folder" as const,
+    };
+  }
+  return createDriveFolder(token, name, parentId);
+}
+
 async function createDriveDocument(token: string, name: string, parentId: string, blocks: DocBlock[]) {
   const created = (await driveFetch(token, DRIVE_CREATE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
-      mimeType: "application/vnd.google-apps.document",
+      mimeType: DOCUMENT_MIME,
       parents: parentId ? [parentId] : undefined,
     }),
   })) as { id: string; name: string; webViewLink?: string };
@@ -367,6 +476,19 @@ async function createDriveDocument(token: string, name: string, parentId: string
     url: created.webViewLink || `https://docs.google.com/document/d/${created.id}/edit`,
     kind: "document" as const,
   };
+}
+
+async function ensureDriveDocument(token: string, name: string, parentId: string, blocks: DocBlock[]) {
+  const existing = await findDriveChild(token, parentId, name, DOCUMENT_MIME);
+  if (existing) {
+    return {
+      id: existing.id,
+      name: existing.name || name,
+      url: existing.webViewLink || `https://docs.google.com/document/d/${existing.id}/edit`,
+      kind: "document" as const,
+    };
+  }
+  return createDriveDocument(token, name, parentId, blocks);
 }
 
 async function ensureCloudDrive(input: {
@@ -383,19 +505,19 @@ async function ensureCloudDrive(input: {
   let folderName = input.title;
   let folderUrl = folderId ? `https://drive.google.com/drive/folders/${folderId}` : "";
   if (!folderId) {
-    const folder = await createDriveFolder(token, input.title, input.parentId);
+    const folder = await ensureDriveFolder(token, input.title, input.parentId);
     folderId = folder.id;
     folderName = folder.name;
     folderUrl = folder.url;
   }
   for (const person of input.people) {
     if (!person.name.trim()) continue;
-    createdFiles.push(await createDriveFolder(token, person.name, folderId));
+    createdFiles.push(await ensureDriveFolder(token, person.name, folderId));
   }
   for (const document of input.documents) {
     if (!document.name.trim()) continue;
     createdFiles.push(
-      await createDriveDocument(token, document.name, folderId, markdownToBlocks(document.markdown || "")),
+      await ensureDriveDocument(token, document.name, folderId, markdownToBlocks(document.markdown || "")),
     );
   }
   return {
@@ -425,7 +547,54 @@ async function ensureDrive(body: {
   return ensureCloudDrive(body);
 }
 
-export async function updateFiledDocument(projectId: string, name: string, blocks: DocBlock[]) {
+async function readLocalDocument(fileId: string) {
+  let response: Response;
+  try {
+    response = await fetch(LOCAL_READ, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileId }),
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) return null;
+  const body = (await response.json()) as { markdown?: string };
+  return typeof body.markdown === "string" ? body.markdown : null;
+}
+
+async function readGoogleDocMarkdown(token: string, fileId: string) {
+  const response = await fetch(
+    `${DRIVE_API}/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent("text/plain")}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) throw new Error(driveApiMessage(await response.text().catch(() => ""), response.status));
+  return response.text();
+}
+
+export async function readFiledDocumentMarkdown(
+  projectId: string,
+  name: string,
+  opts?: { interactive?: boolean },
+) {
+  const file = filedDocument(projectId, name);
+  if (!file) return null;
+  if (import.meta.env.DEV) {
+    const local = await readLocalDocument(file.id);
+    if (local != null) return local;
+  }
+  const token = await driveToken({ interactive: opts?.interactive === true });
+  if (!token) return null;
+  return readGoogleDocMarkdown(token, file.id);
+}
+
+export async function updateFiledDocument(
+  projectId: string,
+  name: string,
+  blocks: DocBlock[],
+  opts?: { interactive?: boolean },
+) {
+  const interactive = opts?.interactive !== false;
   let file = filedDocument(projectId, name);
   if (!file) {
     const drive = projectDrive(projectId);
@@ -452,10 +621,65 @@ export async function updateFiledDocument(projectId: string, name: string, block
       // Fall through to the Docs API with the signed-in Google account.
     }
   }
-  const token = await driveToken();
+  const token = await driveToken({ interactive });
   if (!token) return "skipped" as const;
   await replaceGoogleDoc(token, file.id, blocks);
   return "updated" as const;
+}
+
+/** Push the app charter form into the Project Charter Google Doc. */
+export async function syncCharterToDrive(
+  projectId: string,
+  projectTitle: string,
+  charter: CharterRecord,
+  signed: boolean,
+  opts?: { interactive?: boolean },
+) {
+  return updateFiledDocument(
+    projectId,
+    "Project Charter",
+    charterBlocks(projectTitle, charter, signed),
+    opts,
+  );
+}
+
+/**
+ * Keep the charter form and Drive doc aligned.
+ * Pulls from Drive when readable, merges into the form, then writes the form back to Drive.
+ */
+export async function syncCharterWithDrive(input: {
+  projectId: string;
+  projectTitle: string;
+  charter: CharterRecord;
+  signed: boolean;
+  interactive?: boolean;
+}): Promise<{ charter: CharterRecord; pulled: boolean; pushed: "updated" | "skipped" }> {
+  const interactive = input.interactive === true;
+  let charter = input.charter;
+  let pulled = false;
+  try {
+    const markdown = await readFiledDocumentMarkdown(input.projectId, "Project Charter", { interactive });
+    if (markdown != null) {
+      const fromDoc = parseCharterMarkdown(markdown);
+      if (charterHasContent(fromDoc)) {
+        const merged = mergeCharterFromDoc(charter, fromDoc);
+        if (!chartersEqual(merged, charter)) {
+          charter = merged;
+          pulled = true;
+        }
+      }
+    }
+  } catch {
+    // Keep the form copy if the doc cannot be read.
+  }
+  const pushed = await syncCharterToDrive(
+    input.projectId,
+    input.projectTitle,
+    charter,
+    input.signed,
+    { interactive },
+  );
+  return { charter, pulled, pushed };
 }
 
 export async function ensureProjectDrive(input: {

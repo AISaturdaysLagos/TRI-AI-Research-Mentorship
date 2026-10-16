@@ -22,6 +22,7 @@ type ProposalSource = {
 type MatchSource = {
   id: string;
   title?: string;
+  proposalId?: string;
   mentorId?: string;
   mentorName?: string;
   response?: string;
@@ -72,8 +73,8 @@ function researcherCopy(row: ProposalSource) {
   if (row.status === "research_scoping") {
     return {
       status: "Research scoping",
-      text: "This TRI AI Saturdays Award is in scoping.",
-      next: "Complete the scoping notes on the award invite.",
+      text: "This TRI AI Saturdays Research Award is in scoping.",
+      next: "Open the project workspace and finish scoping with TRI AI.",
       owner: "The award team",
     };
   }
@@ -255,9 +256,13 @@ export function adminNotices(
       });
     }
   }
+  const introducedProposals = new Set(
+    matches.filter((match) => match.introduced && match.proposalId).map((match) => match.proposalId as string),
+  );
   for (const match of matches) {
     const response = match.response || "pending";
     if (response === "pending" || match.introduced) continue;
+    if (match.proposalId && introducedProposals.has(match.proposalId)) continue;
     const title = match.title || "Untitled proposal";
     const mentor = match.mentorName || "A Senior Researcher";
     const interested = response === "interested" || response === "interested_with_questions";

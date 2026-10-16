@@ -62,6 +62,14 @@
         { "fieldPath": "researcherIds", "arrayConfig": "CONTAINS" },
         { "fieldPath": "introduced", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "projectInvites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "guestEmail", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

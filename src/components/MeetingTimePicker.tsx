@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import {
   PROGRAMME_ZONE,
   featuredZones,
@@ -11,6 +11,7 @@ import {
   zonedDateAndTime,
   zonedWallTime,
 } from "../lib/timezones";
+import { SearchSelect } from "./SearchSelect";
 
 export type TimeChoice = {
   date: string;
@@ -28,62 +29,20 @@ export function TimezoneField({
   onChange: (zone: string) => void;
   label?: string;
 }) {
-  const listId = useId();
-  const root = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const zones = useMemo(() => listTimeZones(), []);
-  const shown = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const pool = needle
-      ? zones.filter((zone) => zone.toLowerCase().includes(needle) || zoneLabel(zone).toLowerCase().includes(needle))
-      : featuredZones();
-    return [PROGRAMME_ZONE, ...pool.filter((zone) => zone !== PROGRAMME_ZONE)].slice(0, 14);
-  }, [query, zones]);
-
-  useEffect(() => {
-    if (!open) return;
-    function close(event: MouseEvent) {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
+  const featured = useMemo(() => {
+    const pool = featuredZones();
+    return [PROGRAMME_ZONE, ...pool.filter((zone) => zone !== PROGRAMME_ZONE), ...zones.filter((zone) => zone !== PROGRAMME_ZONE && !pool.includes(zone))];
+  }, [zones]);
 
   return (
-    <div className="zone-field" ref={root}>
-      <span>{label}</span>
-      <button className="zone-current" type="button" aria-expanded={open} aria-controls={listId} onClick={() => setOpen((current) => !current)}>
-        {zoneLabel(value)}
-      </button>
-      {open ? (
-        <div className="zone-menu" id={listId}>
-          <input
-            aria-label="Search time zones"
-            value={query}
-            placeholder="Search time zones"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <ul>
-            {shown.map((zone) => (
-              <li key={zone}>
-                <button
-                  type="button"
-                  aria-pressed={zone === value}
-                  onClick={() => {
-                    onChange(zone);
-                    setOpen(false);
-                    setQuery("");
-                  }}
-                >
-                  {zoneLabel(zone)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </div>
+    <SearchSelect
+      label={label}
+      options={featured.map((zone) => ({ value: zone, label: zoneLabel(zone), detail: zone }))}
+      value={value}
+      onChange={onChange}
+      placeholder="Search time zones…"
+    />
   );
 }
 
@@ -170,26 +129,20 @@ export function MeetingTimePicker({
             }
           />
         </label>
-        <label>
-          Start
-          <select value={value.start} onChange={(event) => onChange(withStart(value, event.target.value))}>
-            {startOptions.map((time) => (
-              <option key={time} value={time}>
-                {formatClock(time)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          End
-          <select value={value.end} onChange={(event) => onChange({ ...value, end: event.target.value })}>
-            {endOptions.map((time) => (
-              <option key={time} value={time}>
-                {formatClock(time)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SearchSelect
+          label="Start"
+          options={startOptions.map((time) => ({ value: time, label: formatClock(time) }))}
+          value={value.start}
+          onChange={(start) => onChange(withStart(value, start))}
+          placeholder="Start time…"
+        />
+        <SearchSelect
+          label="End"
+          options={endOptions.map((time) => ({ value: time, label: formatClock(time) }))}
+          value={value.end}
+          onChange={(end) => onChange({ ...value, end })}
+          placeholder="End time…"
+        />
       </div>
       <div>
         <p className="quiet">The same time for everyone on this meeting.</p>

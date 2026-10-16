@@ -27,8 +27,8 @@ export function ResearchersPage() {
             <p>Submit a research proposal. Students and early-career researchers can apply.</p>
           </article>
           <article className="card">
-            <h3><Mark name="award">TRI AI Saturdays Award</Mark></h3>
-            <p>Selected projects receive a TRI AI Saturdays Award and continue into the programme.</p>
+            <h3><Mark name="award">TRI AI Saturdays Research Award</Mark></h3>
+            <p>Selected projects receive a TRI AI Saturdays Research Award and continue into the programme.</p>
           </article>
           <article className="card">
             <h3><Mark name="resource">What TRI AI provides</Mark></h3>

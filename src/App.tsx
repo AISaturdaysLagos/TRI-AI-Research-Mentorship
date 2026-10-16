@@ -3,7 +3,7 @@ import { PublicLayout, RequireAuth } from "./components/Layout";
 import { AuthProvider } from "./lib/auth";
 import { AboutPage } from "./pages/About";
 import { AccountPage } from "./pages/Account";
-import { AdminHomePage, AdminLayout, AdminMentorsPage, AdminProposalsPage } from "./pages/Admin";
+import { AdminHomePage, AdminLayout, AdminMentorsPage, AdminProposalsPage, AdminResearchersPage } from "./pages/Admin";
 import { AdminReportsPage } from "./pages/AdminReports";
 import { AdminTasksPage } from "./pages/AdminTasks";
 import { AdminMeetingsPage } from "./pages/AdminMeetings";
@@ -56,6 +56,7 @@ export function App() {
                 <Route path="matching" element={<AdminMatchingPage />} />
                 <Route path="meetings" element={<AdminMeetingsPage />} />
                 <Route path="projects" element={<AdminProjectsPage />} />
+                <Route path="researchers" element={<AdminResearchersPage />} />
                 <Route path="mentors" element={<AdminMentorsPage />} />
                 <Route path="reports" element={<AdminReportsPage />} />
               </Route>

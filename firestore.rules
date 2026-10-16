@@ -244,15 +244,27 @@ service cloud.firestore {
         allow create, update: if projectMember(id)
           && docId == 'current'
           && request.resource.data.keys().hasOnly([
-            'scope', 'roles', 'cadence', 'resources', 'integrity', 'authorship', 'release', 'updatedBy', 'updatedAt'
+            'objectives', 'outOfScope', 'duration', 'researcherDuties', 'seniorDuties', 'triDuties',
+            'cadence', 'meetingFormat', 'resources', 'integrity', 'risks', 'authorship', 'ip',
+            'release', 'successCriteria', 'communication', 'notes', 'updatedBy', 'updatedAt'
           ])
-          && noteOk(request.resource.data.scope)
-          && noteOk(request.resource.data.roles)
+          && noteOk(request.resource.data.objectives)
+          && noteOk(request.resource.data.outOfScope)
+          && noteOk(request.resource.data.duration)
+          && noteOk(request.resource.data.researcherDuties)
+          && noteOk(request.resource.data.seniorDuties)
+          && noteOk(request.resource.data.triDuties)
           && noteOk(request.resource.data.cadence)
+          && noteOk(request.resource.data.meetingFormat)
           && noteOk(request.resource.data.resources)
           && noteOk(request.resource.data.integrity)
+          && noteOk(request.resource.data.risks)
           && noteOk(request.resource.data.authorship)
+          && noteOk(request.resource.data.ip)
           && noteOk(request.resource.data.release)
+          && noteOk(request.resource.data.successCriteria)
+          && noteOk(request.resource.data.communication)
+          && noteOk(request.resource.data.notes)
           && request.resource.data.updatedBy == request.auth.uid
           && request.resource.data.updatedAt is timestamp;
         allow delete: if false;
@@ -394,7 +406,10 @@ service cloud.firestore {
 
     match /projectInvites/{token} {
       allow get: if true;
-      allow list: if isAdmin();
+      allow list: if isAdmin()
+        || (signedIn()
+          && resource.data.guestEmail is string
+          && resource.data.guestEmail == request.auth.token.email.lower());
       allow create: if isAdmin()
         && request.resource.data.keys().hasOnly([
           'projectId', 'projectTitle', 'role', 'status', 'awardId', 'acceptedIds',
@@ -653,7 +668,9 @@ service cloud.firestore {
         && data.proposalId.size() < 120
         && data.projectId is string
         && data.projectId.size() < 120
-        && (data.kind == 'scoping' ? data.proposalId.size() > 0 : data.projectId.size() > 0 && data.proposalId == '')
+        && (data.kind == 'scoping'
+          ? (data.proposalId.size() > 0 || data.projectId.size() > 0)
+          : (data.projectId.size() > 0 && data.proposalId == ''))
         && data.startsAt is timestamp
         && data.endsAt is timestamp
         && data.endsAt > data.startsAt
@@ -743,17 +760,32 @@ service cloud.firestore {
     }
 
     function proposalIntroduced(proposalId) {
-      let proposal = get(/databases/$(database)/documents/proposals/$(proposalId)).data;
-      return proposal.get('introduction', '') is string && proposal.get('introduction', '').size() > 0;
-    }
-
-    function mayClaimScopingSlot(proposalId) {
-      return isAdmin() && proposalIntroduced(proposalId) || seniorMayClaimSlot(proposalId);
-    }
-
-    function scopingClaimed(proposalId, meetingId) {
-      let path = /databases/$(database)/documents/scopingSlots/$(proposalId);
       return proposalId.size() > 0
+        && exists(/databases/$(database)/documents/proposals/$(proposalId))
+        && get(/databases/$(database)/documents/proposals/$(proposalId)).data.get('introduction', '') is string
+        && get(/databases/$(database)/documents/proposals/$(proposalId)).data.get('introduction', '').size() > 0;
+    }
+
+    function awardProjectNeedsScoping(projectId) {
+      return projectId.size() > 0
+        && exists(/databases/$(database)/documents/projects/$(projectId))
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.get('awardId', '') is string
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.get('awardId', '').size() > 0
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.status == 'scoping';
+    }
+
+    function mayClaimScopingSlot(slotId) {
+      return (isAdmin() && (proposalIntroduced(slotId) || awardProjectNeedsScoping(slotId)))
+        || seniorMayClaimSlot(slotId);
+    }
+
+    function scopingSlotId(data) {
+      return data.proposalId.size() > 0 ? data.proposalId : data.projectId;
+    }
+
+    function scopingClaimed(slotId, meetingId) {
+      let path = /databases/$(database)/documents/scopingSlots/$(slotId);
+      return slotId.size() > 0
         && exists(path)
         && get(path).data.meetingId == meetingId
         && get(path).data.claimedBy == request.auth.uid;
@@ -793,7 +825,7 @@ service cloud.firestore {
         && request.resource.data.status == 'scheduled'
         && (isAdmin() || seniorMayCreateMeeting())
         && (request.resource.data.kind != 'scoping' || request.resource.data.keys().hasAll(['admins']))
-        && (request.resource.data.kind != 'scoping' || scopingClaimed(request.resource.data.proposalId, id));
+        && (request.resource.data.kind != 'scoping' || scopingClaimed(scopingSlotId(request.resource.data), id));
       allow update: if validMeeting(request.resource.data)
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([

@@ -21,6 +21,8 @@ export type MeetingKind = "scoping" | "project";
 export type MeetingResponseValue = "attending" | "not_attending" | "needs_another_time";
 
 export const scopingNeedsMatch = "Introduce a Senior Researcher first.";
+export const scopingNeedsAwardProject =
+  "Choose a TRI AI Saturdays Research Award project that is still in scoping.";
 
 export function meetingReplyPhrase(response: string | undefined) {
   if (response === "attending") return "can attend";
@@ -119,13 +121,15 @@ export const scopingMeetingTaken =
   "This project already has a scoping meeting.";
 
 async function reserveScopingMeeting(
-  proposalId: string,
+  slotId: string,
   uid: string,
   claim: { matchId?: string; projectId?: string },
 ) {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
-  const slotRef = doc(db, "scopingSlots", proposalId);
+  const trimmed = slotId.trim();
+  if (!trimmed) throw new Error("Choose a proposal or a TRI AI Saturdays Research Award project.");
+  const slotRef = doc(db, "scopingSlots", trimmed);
   const meetingId = doc(collection(db, "meetings")).id;
   const slot = await getDoc(slotRef);
   if (slot.exists()) {
@@ -143,7 +147,7 @@ async function reserveScopingMeeting(
     await runTransaction(db, async (tx) => {
       tx.set(slotRef, {
         meetingId,
-        proposalId,
+        proposalId: trimmed,
         claimedBy: uid,
         updatedAt: serverTimestamp(),
         ...(claim.matchId ? { matchId: claim.matchId } : {}),
@@ -217,21 +221,35 @@ export async function saveMeeting(input: {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
   if (input.kind === "scoping") {
-    const matches = await getDocs(query(collection(db, "matches"), where("proposalId", "==", input.proposalId)));
-    const matched = matches.docs.some((item) => {
-      const row = item.data();
-      return row.introduced === true && typeof row.mentorId === "string" && row.mentorId.length > 0;
-    });
-    if (!matched) throw new Error(scopingNeedsMatch);
+    if (input.proposalId) {
+      const matches = await getDocs(query(collection(db, "matches"), where("proposalId", "==", input.proposalId)));
+      const matched = matches.docs.some((item) => {
+        const row = item.data();
+        return row.introduced === true && typeof row.mentorId === "string" && row.mentorId.length > 0;
+      });
+      if (!matched) throw new Error(scopingNeedsMatch);
+    } else if (input.projectId) {
+      const project = await getDoc(doc(db, "projects", input.projectId));
+      const data = project.data();
+      if (!project.exists() || !String(data?.awardId ?? "").trim() || data?.status !== "scoping") {
+        throw new Error(scopingNeedsAwardProject);
+      }
+    } else {
+      throw new Error(scopingNeedsAwardProject);
+    }
   }
   const admins = input.kind === "scoping" ? (input.admins ?? []).slice(0, 3) : [];
   const participantIds = [
     ...new Set([...input.researchers, ...input.seniorResearchers, ...admins].map((person) => person.uid)),
   ];
   const uid = firebaseAuth()?.currentUser?.uid || input.createdBy;
+  const scopingSlotId = input.proposalId || input.projectId;
   const meetingId =
     input.kind === "scoping"
-      ? await reserveScopingMeeting(input.proposalId, uid, input.claim ?? {})
+      ? await reserveScopingMeeting(scopingSlotId, uid, {
+          ...input.claim,
+          ...(input.projectId ? { projectId: input.projectId } : {}),
+        })
       : doc(collection(db, "meetings")).id;
   await setDoc(doc(db, "meetings", meetingId), {
     kind: input.kind,

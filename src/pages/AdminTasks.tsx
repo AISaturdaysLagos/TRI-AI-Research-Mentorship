@@ -23,6 +23,7 @@ import {
 import { formatZonedWhen, PROGRAMME_ZONE } from "../lib/timezones";
 import { listProjectActivities, type ProjectActivity } from "../lib/workspace";
 import { userFacingError } from "../lib/errors";
+import { SearchSelect } from "../components/SearchSelect";
 
 function when(value: Date | null) {
   return value ? formatZonedWhen(value, PROGRAMME_ZONE) : "the time is still being recorded";
@@ -349,19 +350,26 @@ export function AdminTasksPage() {
       <h2><Mark name="task">Tasks</Mark></h2>
       {error ? <p className="error">{error}</p> : null}
       <div className="filters">
-        <select aria-label="Task status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-          <option value="open">Open tasks</option>
-          <option value="done">Done tasks</option>
-          <option value="all">All tasks</option>
-        </select>
-        <select aria-label="Task area" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
-          <option value="all">All areas</option>
-          {areas.map((area) => (
-            <option key={area} value={area}>
-              {area}
-            </option>
-          ))}
-        </select>
+        <SearchSelect
+          hideLabel
+          label="Task status"
+          options={[
+            { value: "open", label: "Open tasks" },
+            { value: "done", label: "Done tasks" },
+            { value: "all", label: "All tasks" },
+          ]}
+          value={statusFilter}
+          onChange={setStatusFilter}
+          placeholder="Status…"
+        />
+        <SearchSelect
+          hideLabel
+          label="Task area"
+          options={[{ value: "all", label: "All areas" }, ...areas.map((area) => ({ value: area, label: area }))]}
+          value={areaFilter}
+          onChange={setAreaFilter}
+          placeholder="Area…"
+        />
       </div>
       {namedGroups.length > 0 ? (
         <TaskGroups groups={namedGroups} busy={busy} onProgrammeDone={(task) => void onProgrammeDone(task)} onDone={(task) => void onDone(task)} />

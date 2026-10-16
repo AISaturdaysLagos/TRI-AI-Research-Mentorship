@@ -200,8 +200,13 @@ export function buildProgrammeTasks(input: {
     }
   }
 
+  const introducedProposals = new Set(
+    input.matches.filter((match) => match.introduced && match.proposalId).map((match) => match.proposalId as string),
+  );
   for (const match of input.matches) {
     if (match.introduced) continue;
+    if (match.proposalId && introducedProposals.has(match.proposalId)) continue;
+    if (match.proposalId && hasProject(match.proposalId, input.projects)) continue;
     const response = match.response || "pending";
     if (response === "pending") continue;
     const title = titleOf(match, "Untitled proposal");

@@ -70,7 +70,7 @@ function assertOneAwardProject(documents) {
     if (document.path.startsWith("awards/")) {
       for (const person of document.data.recipients ?? []) {
         if (awardByResearcher.has(person.uid)) {
-          throw new Error(`${person.name} is on more than one TRI AI Saturdays Award.`);
+          throw new Error(`${person.name} is on more than one TRI AI Saturdays Research Award.`);
         }
         awardByResearcher.set(person.uid, document.path);
       }
@@ -78,7 +78,7 @@ function assertOneAwardProject(documents) {
     if (document.path.startsWith("projects/") && document.data.awardId) {
       for (const person of document.data.researchers ?? []) {
         if (projectByResearcher.has(person.uid)) {
-          throw new Error(`${person.name} is on more than one TRI AI Saturdays Award project.`);
+          throw new Error(`${person.name} is on more than one TRI AI Saturdays Research Award project.`);
         }
         projectByResearcher.set(person.uid, document.path);
       }
@@ -244,7 +244,7 @@ export function buildFixtureDocuments(uids) {
         researchArea: "earth observation",
         africaRelevance: "The sites are flood-prone neighbourhoods in Lagos.",
         summary:
-          "Turn an existing flood-mapping prototype from the TRI AI Saturdays Award into a research question about how well open satellite imagery marks flooded streets.",
+          "Turn an existing flood-mapping prototype from the TRI AI Saturdays Research Award into a research question about how well open satellite imagery marks flooded streets.",
         problem: "City teams need a faster view of which streets are under water.",
         question: "How reliably can open satellite imagery mark flooded streets in Lagos?",
         methodology: "Compare model maps with ground reports from two flood events.",
@@ -337,7 +337,7 @@ export function buildFixtureDocuments(uids) {
         proposalId: "fixture-flood-map",
         title: "Flood mapping from satellite imagery",
         summary:
-          "Turn an existing flood-mapping prototype from the TRI AI Saturdays Award into a research question about how well open satellite imagery marks flooded streets.",
+          "Turn an existing flood-mapping prototype from the TRI AI Saturdays Research Award into a research question about how well open satellite imagery marks flooded streets.",
         question: "How reliably can open satellite imagery mark flooded streets in Lagos?",
         researchArea: "earth observation",
         africaRelevance: "The sites are flood-prone neighbourhoods in Lagos.",
@@ -345,7 +345,7 @@ export function buildFixtureDocuments(uids) {
         researcherId: researcher,
         researcherIds: floodTeam.map((item) => item.uid),
         researcherName: names(floodTeam),
-        readiness: "The TRI AI Saturdays Award team already built a flood-mapping prototype.",
+        readiness: "The TRI AI Saturdays Research Award team already built a flood-mapping prototype.",
         methodology: "Compare model maps with ground reports from two flood events.",
         data: "Sentinel imagery and a small set of ground reports.",
         evaluation: "Agreement with ground reports, reported by neighbourhood.",
@@ -368,7 +368,7 @@ export function buildFixtureDocuments(uids) {
         proposalId: "fixture-flood-map",
         title: "Flood mapping from satellite imagery",
         summary:
-          "Turn an existing flood-mapping prototype from the TRI AI Saturdays Award into a research question about how well open satellite imagery marks flooded streets.",
+          "Turn an existing flood-mapping prototype from the TRI AI Saturdays Research Award into a research question about how well open satellite imagery marks flooded streets.",
         question: "How reliably can open satellite imagery mark flooded streets in Lagos?",
         researchArea: "earth observation",
         africaRelevance: "The sites are flood-prone neighbourhoods in Lagos.",
@@ -376,7 +376,7 @@ export function buildFixtureDocuments(uids) {
         researcherId: researcher,
         researcherIds: floodTeam.map((item) => item.uid),
         researcherName: names(floodTeam),
-        readiness: "The TRI AI Saturdays Award team already built a flood-mapping prototype.",
+        readiness: "The TRI AI Saturdays Research Award team already built a flood-mapping prototype.",
         methodology: "Compare model maps with ground reports from two flood events.",
         data: "Sentinel imagery and a small set of ground reports.",
         evaluation: "Agreement with ground reports, reported by neighbourhood.",
@@ -386,7 +386,7 @@ export function buildFixtureDocuments(uids) {
         mentorName: "Zainab Ibrahim",
         fit: { researchArea: 5, method: 5, interest: 4, availability: 3, complementarity: 5 },
         fitScore: 22,
-        note: "Same TRI AI Saturdays Award as the request sent to Kwame. Two Senior Researchers can join one project.",
+        note: "Same TRI AI Saturdays Research Award as the request sent to Kwame. Two Senior Researchers can join one project.",
         response: "pending",
         responseNote: "",
         introduced: false,
@@ -398,7 +398,7 @@ export function buildFixtureDocuments(uids) {
       data: {
         title: "Flood mapping from satellite imagery",
         summary:
-          "The one TRI AI Saturdays Award project for Ada Okonkwo, Chidi Okeke, and Amina Yusuf.",
+          "The one TRI AI Saturdays Research Award project for Ada Okonkwo, Chidi Okeke, and Amina Yusuf.",
         researchArea: "earth observation",
         status: "scoping",
         health: "green",
@@ -422,7 +422,7 @@ export function buildFixtureDocuments(uids) {
       path: "projects/fixture-hausa-pilot",
       data: {
         title: "Evaluating translation models for Hausa health information",
-        summary: "Ada Okonkwo's scoping project with Kwame Mensah and Zainab Ibrahim. It is not a TRI AI Saturdays Award project.",
+        summary: "Ada Okonkwo's scoping project with Kwame Mensah and Zainab Ibrahim. It is not a TRI AI Saturdays Research Award project.",
         researchArea: "machine translation",
         status: "scoping",
         health: "green",
@@ -523,7 +523,7 @@ export function buildFixtureDocuments(uids) {
         roles: "Ada Okonkwo, Chidi Okeke, and Amina Yusuf share the work. Kwame Mensah and Zainab Ibrahim review the comparison.",
         cadence: "Monthly",
         resources: "Open Sentinel imagery. No extra compute yet.",
-        integrity: "Ground reports stay with the neighbourhood labels agreed for this TRI AI Saturdays Award.",
+        integrity: "Ground reports stay with the neighbourhood labels agreed for this TRI AI Saturdays Research Award.",
         authorship: "The three researchers share authorship. The Senior Researchers are acknowledged.",
         release: "Maps stay internal until TRI AI marks an output publishable.",
         updatedBy: researcher,

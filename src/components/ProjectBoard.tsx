@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useDialogFocus } from "../lib/focusTrap";
 import {
   formatMeetingWhen,
   listMeetings,
@@ -20,8 +21,10 @@ import {
   saveWorkTask,
   type WorkTask,
 } from "../lib/workspace";
+import { CloseButton } from "./CloseButton";
 import { Icon } from "./Icon";
 import { Loader } from "./Loader";
+import { SearchSelect } from "./SearchSelect";
 import { userFacingError } from "../lib/errors";
 
 const STATUSES = [
@@ -58,18 +61,16 @@ function TaskStatus({
   onChange: (status: Status) => void;
 }) {
   return (
-    <select
-      className={`notion-status is-${value}`}
-      aria-label="Status"
-      value={value}
-      onChange={(event) => onChange(statusOf(event.target.value))}
-    >
-      {STATUSES.map(([status, label]) => (
-        <option key={status} value={status}>
-          {label}
-        </option>
-      ))}
-    </select>
+    <div className={`notion-status-wrap is-${value}`}>
+      <SearchSelect
+        hideLabel
+        label="Status"
+        options={STATUSES.map(([status, label]) => ({ value: status, label }))}
+        value={value}
+        onChange={(next) => onChange(statusOf(next))}
+        placeholder="Status…"
+      />
+    </div>
   );
 }
 
@@ -92,15 +93,20 @@ export function ProjectBoard({
 }) {
   const [tasks, setTasks] = useState<WorkTask[] | null>(null);
   const [meetings, setMeetings] = useState<MeetingRow[] | null>(null);
-  const [taskView, setTaskView] = useState<"table" | "board">("table");
+  const [taskView, setTaskView] = useState<"table" | "board">(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 860px)").matches ? "board" : "table",
+  );
   const [draft, setDraft] = useState("");
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [openMeeting, setOpenMeeting] = useState<string | null>(null);
   const [replyNote, setReplyNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const taskPeekRef = useRef<HTMLElement>(null);
   const people = uniqueNames([researchers ?? [], seniorResearchers ?? []]);
   const mine = people.find((name) => name === displayName) || "";
+  const selected = (tasks ?? []).find((task) => task.id === openTask) || null;
+  useDialogFocus(Boolean(selected), taskPeekRef);
 
   async function reloadTasks() {
     setTasks(await listWorkTasks(projectId));
@@ -143,7 +149,6 @@ export function ProjectBoard({
     return () => window.removeEventListener("keydown", onKey);
   }, [openTask, openMeeting]);
 
-  const selected = tasks?.find((task) => task.id === openTask) || null;
   const meeting = meetings?.find((item) => item.id === openMeeting) || null;
   const upcoming = useMemo(() => (meetings ?? []).filter((item) => !meetingIsArchived(item)), [meetings]);
   const earlier = useMemo(() => (meetings ?? []).filter((item) => meetingIsArchived(item)), [meetings]);
@@ -352,13 +357,26 @@ export function ProjectBoard({
       ) : null}
 
       {selected ? (
-        <aside className="notion-peek" aria-label={selected.title || "Task"}>
+        <aside
+          ref={taskPeekRef}
+          className="notion-peek has-dismiss"
+          role="dialog"
+          aria-modal="true"
+          aria-label={selected.title || "Task"}
+          tabIndex={-1}
+        >
+          <CloseButton label="Close task" className="btn-compact" onClick={() => setOpenTask(null)} />
           <header>
-            <button className="btn btn-ghost btn-compact" type="button" onClick={() => setOpenTask(null)}>
-              Close
-            </button>
             {selected.createdBy === uid || admin ? (
-              <button className="btn btn-ghost btn-compact" type="button" disabled={busy === selected.id} onClick={() => void remove(selected)}>
+              <button
+                className="btn btn-danger btn-compact"
+                type="button"
+                disabled={busy === selected.id}
+                onClick={() => {
+                  if (!window.confirm("Delete this task? This cannot be undone.")) return;
+                  void remove(selected);
+                }}
+              >
                 Delete
               </button>
             ) : null}
@@ -378,20 +396,13 @@ export function ProjectBoard({
             Status
             <TaskStatus value={statusOf(selected.status)} onChange={(status) => void change(selected, { status })} />
           </label>
-          <label>
-            Owner
-            <select
-              value={selected.ownerName || ""}
-              onChange={(event) => void change(selected, { ownerName: event.target.value })}
-            >
-              <option value="">Unassigned</option>
-              {people.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <SearchSelect
+            label="Owner"
+            options={[{ value: "", label: "Unassigned" }, ...people.map((name) => ({ value: name, label: name }))]}
+            value={selected.ownerName || ""}
+            onChange={(ownerName) => void change(selected, { ownerName })}
+            placeholder="Owner…"
+          />
           <label>
             Due
             <input type="date" value={selected.due || ""} onChange={(event) => void change(selected, { due: event.target.value })} />
@@ -463,14 +474,14 @@ function TaskRow({
         }}
       />
       <TaskStatus value={status} onChange={(next) => onChange({ status: next })} />
-      <select aria-label="Owner" value={task.ownerName || ""} onChange={(event) => onChange({ ownerName: event.target.value })}>
-        <option value="">Unassigned</option>
-        {owners.map((name) => (
-          <option key={name} value={name}>
-            {name}
-          </option>
-        ))}
-      </select>
+      <SearchSelect
+        hideLabel
+        label="Owner"
+        options={[{ value: "", label: "Unassigned" }, ...owners.map((name) => ({ value: name, label: name }))]}
+        value={task.ownerName || ""}
+        onChange={(ownerName) => onChange({ ownerName })}
+        placeholder="Owner…"
+      />
       <input aria-label="Due" type="date" value={task.due || ""} onChange={(event) => onChange({ due: event.target.value })} />
       <button className="notion-open" type="button" onClick={onOpen} aria-label={`Open ${task.title || "task"}`}>
         Open
@@ -554,12 +565,20 @@ function MeetingPeek({
     };
   }, [meeting]);
 
+  const peekRef = useRef<HTMLElement>(null);
+  useDialogFocus(true, peekRef);
+
   return (
-    <aside className="notion-peek" aria-label={meeting.title || "Meeting"}>
+    <aside
+      ref={peekRef}
+      className="notion-peek has-dismiss"
+      role="dialog"
+      aria-modal="true"
+      aria-label={meeting.title || "Meeting"}
+      tabIndex={-1}
+    >
+      <CloseButton label="Close meeting" className="btn-compact" onClick={onClose} />
       <header>
-        <button className="btn btn-ghost btn-compact" type="button" onClick={onClose}>
-          Close
-        </button>
         {meeting.calendarLink ? (
           <a className="btn btn-ghost btn-compact" href={meeting.calendarLink} target="_blank" rel="noreferrer">
             Calendar

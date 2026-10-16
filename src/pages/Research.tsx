@@ -3,6 +3,8 @@ import { Loader } from "../components/Loader";
 import { StatusChip } from "../components/StatusChip";
 import { firebaseConfigured } from "../lib/firebase";
 import { listResearchProjects } from "../lib/records";
+import { SearchSelect } from "../components/SearchSelect";
+import { projectTypeLabel } from "../types/domain";
 import { OUTPUT_TYPES, listPublicOutputs, type OutputRecord } from "../lib/workspace";
 
 type NamedPerson = { name?: string };
@@ -16,6 +18,7 @@ type PublicProject = {
   contribution?: string;
   year?: string;
   status?: string;
+  awardId?: string;
   researchers?: NamedPerson[];
   seniorResearchers?: NamedPerson[];
 };
@@ -40,7 +43,7 @@ export function ResearchPage() {
     }
     listResearchProjects()
       .then(async (rows) => {
-        const list = rows as PublicProject[];
+        const list = (rows as PublicProject[]).filter((project) => project.status === "active");
         const pairs = await Promise.all(
           list.map(async (project) => [project.id, await listPublicOutputs(project.id).catch(() => [])] as const),
         );
@@ -70,58 +73,56 @@ export function ResearchPage() {
     <article>
       <header className="page-intro">
         <div className="container">
-          <p className="mono">Research projects and outputs</p>
+          <p className="mono">Research</p>
           <h1>Current TRI AI research projects.</h1>
-          <p className="lede">Current projects and their outputs.</p>
+          <p className="lede">Browse active and completed projects, and their public outputs.</p>
         </div>
       </header>
       <section className="section-tight">
         <div className="container">
-          <div className="filters">
-            <label>
-              Research area
-              <select value={area} onChange={(event) => setArea(event.target.value)}>
-                {areas.map((item) => (
-                  <option key={item} value={item}>
-                    {item === "all" ? "All areas" : item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Year
-              <select value={year} onChange={(event) => setYear(event.target.value)}>
-                {years.map((item) => (
-                  <option key={item} value={item}>
-                    {item === "all" ? "All years" : item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Output
-              <select value={outputType} onChange={(event) => setOutputType(event.target.value)}>
-                <option value="all">All outputs</option>
-                {OUTPUT_TYPES.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          {loaded && projects.length > 0 ? (
+            <div className="filters">
+              <SearchSelect
+                label="Research area"
+                options={areas.map((item) => ({ value: item, label: item === "all" ? "All areas" : item }))}
+                value={area}
+                onChange={setArea}
+                placeholder="Area…"
+              />
+              <SearchSelect
+                label="Year"
+                options={years.map((item) => ({ value: item, label: item === "all" ? "All years" : item }))}
+                value={year}
+                onChange={setYear}
+                placeholder="Year…"
+              />
+              <SearchSelect
+                label="Output"
+                options={[
+                  { value: "all", label: "All outputs" },
+                  ...OUTPUT_TYPES.map(([value, label]) => ({ value, label })),
+                ]}
+                value={outputType}
+                onChange={setOutputType}
+                placeholder="Output type…"
+              />
+            </div>
+          ) : null}
           {!loaded ? <Loader label="Loading research projects" /> : null}
           {loaded && visible.length === 0 ? (
             <div className="empty">
-              No projects yet.
+              {projects.length === 0
+                ? "No projects are published yet."
+                : "No projects match these filters. Try clearing an option above."}
             </div>
           ) : null}
           {loaded ? (
           <div className="card-grid">
             {visible.map((project) => (
               <article className="card" key={project.id}>
-                <p className="mono">{project.researchArea || "Research"}</p>
+                <p className="mono">{projectTypeLabel(project)}</p>
                 <h3>{project.title || "Untitled project"}</h3>
+                {project.researchArea ? <p className="quiet">{project.researchArea}</p> : null}
                 <p>{project.question || project.summary || "A summary has not been added yet."}</p>
                 {project.status ? (
                   <p>

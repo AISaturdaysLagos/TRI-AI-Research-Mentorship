@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { Link } from "react-router-dom";
+import { CloseButton } from "./CloseButton";
 import { useAuth } from "../lib/auth";
 import { firestore } from "../lib/firebase";
 import { closeNotification, syncNotifications, watchNotifications } from "../lib/inbox";
@@ -23,6 +24,7 @@ import {
   listResearchProjects,
   listSeniorProfiles,
   projectProposalIds,
+  settledMatchProposalIds,
 } from "../lib/records";
 import { userFacingError } from "../lib/errors";
 
@@ -42,15 +44,22 @@ async function currentNotices(uid: string, role: string): Promise<AttentionNotic
     return [...researcherNotices(waiting), ...projectNotices(projects), ...meetingNotices(meetings)];
   }
   if (role === "senior_researcher") {
-    const [matches, projects, meetings] = await Promise.all([
+    const [matches, projects, programmeProjects, meetings] = await Promise.all([
       listMatches(),
       listParticipantProjects(uid),
+      listResearchProjects(),
       listParticipantMeetings(uid),
     ]);
-    const joined = projectProposalIds(projects as { id?: string; proposalId?: string }[]);
+    const settled = settledMatchProposalIds(
+      [
+        ...(projects as { id?: string; proposalId?: string; status?: string; participantIds?: string[] }[]),
+        ...(programmeProjects as { id?: string; proposalId?: string; status?: string; participantIds?: string[] }[]),
+      ],
+      uid,
+    );
     const openMatches = matches.filter((row) => {
       const proposalId = (row as { proposalId?: string }).proposalId;
-      return !proposalId || !joined.has(proposalId);
+      return !proposalId || !settled.has(proposalId);
     });
     return [...seniorNotices(openMatches, uid), ...projectNotices(projects), ...meetingNotices(meetings)];
   }
@@ -178,12 +187,10 @@ export function AttentionNotices() {
   return (
     <div className="notices" aria-label="Notifications">
       {items.map((item) => (
-        <article key={item.id} className="notice">
+        <article key={item.id} className="notice has-dismiss">
+          <CloseButton label="Dismiss notice" className="btn-compact" onClick={() => void close(item.id)} />
           <div className="notice-bar">
             <p className="mono">{item.status}</p>
-            <button className="btn btn-ghost btn-compact" type="button" onClick={() => void close(item.id)}>
-              Close
-            </button>
           </div>
           <p>{item.text}</p>
           {item.href && item.action ? (

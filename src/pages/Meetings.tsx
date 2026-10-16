@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { CloseButton } from "../components/CloseButton";
 import { EmailSupport } from "../components/EmailSupport";
 import { Loader } from "../components/Loader";
 import { MeetingClocks, MeetingTimePicker, TimezoneField, type TimeChoice } from "../components/MeetingTimePicker";
+import { SearchSelect } from "../components/SearchSelect";
 import { meetingEmail, meetingReplyEmail, named, type EmailDraft } from "../lib/email";
 import { MeetingSchedule } from "../components/MeetingSchedule";
 import { Mark } from "../components/Icon";
@@ -32,6 +34,7 @@ import {
 } from "../lib/meetings";
 import { listAdmins, listMatches, listMentorMatches, listParticipantProjects, listProgrammeIntroductions } from "../lib/records";
 import { userFacingError } from "../lib/errors";
+import { projectTypeLabel } from "../types/domain";
 
 function MeetingCard({
   meeting,
@@ -240,13 +243,13 @@ function MeetingCard({
           ) : null}
         </>
       )}
-      {manageable ? (
+      {manageable && !editing ? (
         <div className="actions">
-          <button className="btn btn-ghost btn-compact" type="button" onClick={() => setEditing((value) => !value)}>
-            {editing ? "Close editor" : "Edit"}
+          <button className="btn btn-ghost btn-compact" type="button" onClick={() => setEditing(true)}>
+            Edit
           </button>
           {confirming ? (
-            <button className="btn btn-primary btn-compact" type="button" onClick={() => void cancel()}>
+            <button className="btn btn-danger btn-compact" type="button" onClick={() => void cancel()}>
               Confirm cancel
             </button>
           ) : (
@@ -257,7 +260,11 @@ function MeetingCard({
         </div>
       ) : null}
       {editing && manageable ? (
-        <form className="fields" onSubmit={(event) => void saveEdit(event)}>
+        <form className="fields has-dismiss" onSubmit={(event) => void saveEdit(event)}>
+          <CloseButton label="Close editor" className="btn-compact" onClick={() => setEditing(false)} />
+          <div className="archive-head">
+            <h3>Edit meeting</h3>
+          </div>
           <MeetingTimePicker value={editWhen} onChange={setEditWhen} people={attendees} preserveInstantOnZone />
           <label>
             Note
@@ -271,7 +278,7 @@ function MeetingCard({
         </form>
       ) : null}
       {error ? <p className="error">{error}</p> : null}
-      <EmailSupport draft={mail} />
+      <EmailSupport label="Meeting email" draft={mail} autoOpen />
     </article>
   );
 }
@@ -293,6 +300,7 @@ type ProjectChoice = {
   title?: string;
   status?: string;
   proposalId?: string;
+  awardId?: string;
   researchers?: { uid?: string; name?: string }[];
   seniorResearchers?: { uid?: string; name?: string }[];
 };
@@ -618,10 +626,10 @@ function ResearcherMeetingForm({
     return (
       <>
         {message ? <p className="notice">{message}</p> : null}
-        <EmailSupport draft={mail} />
+        <EmailSupport label="Meeting email" draft={mail} autoOpen />
         <div className="button-row">
-          <button className="btn btn-primary" type="button" aria-expanded={false} onClick={() => setOpen(true)}>
-            Create Meetings
+          <button className="btn btn-primary" type="button" aria-expanded="false" onClick={() => setOpen(true)}>
+            Create a meeting
           </button>
         </div>
       </>
@@ -629,49 +637,52 @@ function ResearcherMeetingForm({
   }
 
   return (
-    <form className="fields" onSubmit={(event) => void onSubmit(event)}>
+    <form className="fields has-dismiss" onSubmit={(event) => void onSubmit(event)}>
+      <CloseButton
+        label="Close create meeting"
+        className="btn-compact"
+        onClick={() => {
+          setMessage("");
+          setOpen(false);
+        }}
+      />
       <div className="archive-head">
-        <h2><Mark name="meeting">Create Meetings</Mark></h2>
-        <button
-          className="btn btn-ghost btn-compact"
-          type="button"
-          aria-expanded
-          onClick={() => {
-            setMessage("");
-            setOpen(false);
-          }}
-        >
-          Close
-        </button>
+        <h2><Mark name="meeting">Create a meeting</Mark></h2>
       </div>
-      <label>
-        Meeting
-        <select
-          value={kind}
-          onChange={(event) => {
-            setKind(event.target.value as MeetingKind);
-            setRecordId("");
-          }}
-        >
-          <option value="scoping">New scoping meeting</option>
-          <option value="project">Active project meeting</option>
-        </select>
-      </label>
-      <label>
-        {kind === "scoping" ? "Proposal" : "Active project"}
-        <select value={recordId} onChange={(event) => setRecordId(event.target.value)}>
-          <option value="">Select</option>
-          {options.map((item) => {
+      <SearchSelect
+        label="Meeting"
+        options={[
+          { value: "scoping", label: "New scoping meeting" },
+          { value: "project", label: "Active project meeting" },
+        ]}
+        value={kind}
+        onChange={(next) => {
+          setKind(next as MeetingKind);
+          setRecordId("");
+        }}
+        placeholder="Meeting type…"
+      />
+      <SearchSelect
+        label={kind === "scoping" ? "Proposal" : "Active project"}
+        options={[
+          { value: "", label: "Select" },
+          ...options.map((item) => {
             const taken = kind === "scoping" && takenScoping.has(item.id);
-            return (
-              <option key={item.id} value={item.id} disabled={taken}>
-                {item.title || "Untitled"}
-                {taken ? " — scoping meeting already set" : ""}
-              </option>
-            );
-            })}
-          </select>
-        </label>
+            const type =
+              kind === "project" && "awardId" in item ? projectTypeLabel(item as ProjectChoice) : undefined;
+            return {
+              value: item.id,
+              label: item.title || "Untitled",
+              detail: taken ? "Scoping meeting already set" : type,
+              disabled: taken,
+            };
+          }),
+        ]}
+        value={recordId}
+        onChange={setRecordId}
+        placeholder={kind === "scoping" ? "Search proposals…" : "Search projects…"}
+        required
+      />
         {kind === "scoping" && scopingProposals.length === 0 ? (
           <p className="quiet">Introduce a Senior Researcher first.</p>
         ) : null}

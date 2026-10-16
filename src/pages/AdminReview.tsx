@@ -17,6 +17,7 @@ import {
   type EmailAddress,
   type EmailDraft,
 } from "../lib/email";
+import { SearchSelect } from "../components/SearchSelect";
 import { getProposal, getReview, listDirectory, listStaff, saveReview, updateProposalStatus } from "../lib/records";
 import {
   DIRECT_DECISIONS,
@@ -233,13 +234,13 @@ export function AdminReviewPage() {
         <div>
           <h2>{String(proposal.title || "Untitled proposal")}</h2>
           <p className="quiet">
-            {String(proposal.name || "Researcher")} · {saturdays ? "TRI AI Saturdays Award" : "Direct proposal"}
+            {String(proposal.name || "Researcher")} · {saturdays ? "TRI AI Saturdays Research Award" : "Direct proposal"}
           </p>
         </div>
         {proposal.status ? <StatusChip status={String(proposal.status)} /> : null}
       </div>
       {saturdays ? (
-        <div className="notice">Score research readiness for this TRI AI Saturdays Award.</div>
+        <div className="notice">Score research readiness for this TRI AI Saturdays Research Award.</div>
       ) : null}
       <div className="review-grid">
         <ProposalRead
@@ -255,23 +256,24 @@ export function AdminReviewPage() {
           <h3>Scoring rubric</h3>
           <p className="quiet">Total {total} / 100</p>
           {REVIEW_CRITERIA.map((item) => (
-            <label key={item.key}>
-              {item.label}
-              <span className="quiet">Up to {item.max}</span>
-              <input
-                type="number"
-                min={0}
-                max={item.max}
-                value={scores[item.key]}
-                disabled={!canEdit}
-                onChange={(event) =>
-                  setScores((current) => ({
-                    ...current,
-                    [item.key]: Math.min(item.max, Math.max(0, Number(event.target.value) || 0)),
-                  }))
-                }
-              />
-            </label>
+            <SearchSelect
+              key={item.key}
+              label={item.label}
+              hint={`Up to ${item.max}`}
+              options={Array.from({ length: item.max + 1 }, (_, score) => ({
+                value: String(score),
+                label: String(score),
+              }))}
+              value={String(scores[item.key] ?? 0)}
+              onChange={(next) =>
+                setScores((current) => ({
+                  ...current,
+                  [item.key]: Math.min(item.max, Math.max(0, Number(next) || 0)),
+                }))
+              }
+              disabled={!canEdit}
+              placeholder={`0–${item.max}`}
+            />
           ))}
           <label>
             Top strengths
@@ -308,26 +310,28 @@ export function AdminReviewPage() {
             ))}
           </fieldset>
           {canCreate && staff.length > 0 ? (
-            <label>
-              Reviewer
-              <select value={reviewerId || user?.uid || ""} disabled={!canEdit} onChange={(event) => setReviewerId(event.target.value)}>
-                {staff.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.displayName || person.email || person.id}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SearchSelect
+              label="Reviewer"
+              options={staff.map((person) => ({
+                value: person.id,
+                label: person.displayName || person.email || person.id,
+                detail: person.email && person.displayName ? person.email : undefined,
+              }))}
+              value={reviewerId || user?.uid || ""}
+              onChange={setReviewerId}
+              disabled={!canEdit}
+              placeholder="Search reviewers…"
+            />
           ) : null}
           {!canEdit ? (
             <div className="notice">Waiting for TRI AI to open this review.</div>
           ) : null}
           {message ? <p className="quiet">{message}</p> : null}
           {error ? <p className="error">{error}</p> : null}
-          <EmailSupport draft={decisionDraft} />
-          <EmailSupport draft={reviewerDraft} />
+          <EmailSupport label="Decision email" draft={decisionDraft} />
+          <EmailSupport label="Reviewer email" draft={reviewerDraft} autoOpen />
           <div className="form-actions">
-            <button className="btn btn-ghost" type="submit" disabled={busy || !canEdit}>
+            <button className="btn btn-primary" type="submit" disabled={busy || !canEdit}>
               Save review
             </button>
           </div>
@@ -335,7 +339,7 @@ export function AdminReviewPage() {
             {decisions.map((item) => (
               <button
                 key={item.status}
-                className="btn btn-primary"
+                className={item.status === "declined" ? "btn btn-danger" : "btn btn-ghost"}
                 type="button"
                 disabled={busy || !canEdit}
                 onClick={() => void decide(item.status)}

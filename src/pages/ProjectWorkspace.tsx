@@ -3,7 +3,10 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Icon, Mark, type IconName } from "../components/Icon";
 import { ProjectBoard } from "../components/ProjectBoard";
 import { Loader } from "../components/Loader";
+import { CharterFields } from "../components/CharterFields";
+import { SearchSelect } from "../components/SearchSelect";
 import { HealthChoices, HealthMark, StatusChip } from "../components/StatusChip";
+import { projectTypeLabel } from "../types/domain";
 import {
   blocksToMarkdown,
   charterBlocks,
@@ -14,12 +17,15 @@ import {
   progressBlocks,
   resourceBlocks,
   scopingNotesBlocks,
+  syncCharterToDrive,
+  syncCharterWithDrive,
   updateFiledDocument,
 } from "../lib/driveDocs";
 import { projectDrive, rememberProjectFolder } from "../lib/projectDrive";
 import { useAuth } from "../lib/auth";
 import { activateProject, markProjectCharterSigned } from "../lib/records";
 import {
+  CHARTER_FIELD_LABELS,
   EMPTY_CHARTER,
   OUTPUT_STATUSES,
   OUTPUT_TYPES,
@@ -81,7 +87,6 @@ function DocLink({ href, children }: { href: string; children: ReactNode }) {
 }
 
 const PANELS = [
-  ["work", "Work", "task"],
   ["overview", "Overview", "overview"],
   ["charter", "Charter", "charter"],
   ["milestones", "Milestones", "milestone"],
@@ -89,6 +94,7 @@ const PANELS = [
   ["resources", "Resources", "resource"],
   ["outputs", "Outputs", "output"],
   ["drive", "Drive", "folder"],
+  ["work", "Work", "task"],
 ] as const satisfies readonly (readonly [string, string, IconName])[];
 
 type PanelId = (typeof PANELS)[number][0];
@@ -206,11 +212,22 @@ export function ProjectWorkspacePage() {
       title: nextProject.title || "Project",
       people,
       documents,
-    }).then((drive) => {
+    }).then(async (drive) => {
       if (drive && drive.id && drive.id !== nextProject.driveFolderId) {
-        return saveProjectDrive(id, drive);
+        await saveProjectDrive(id, drive);
       }
-      return undefined;
+      // Quietly keep the Project Charter Google Doc aligned when a Google token is already available.
+      const synced = await syncCharterWithDrive({
+        projectId: id,
+        projectTitle: nextProject.title || "Project",
+        charter: nextCharter,
+        signed: Boolean(nextProject.charterSigned),
+        interactive: false,
+      });
+      if (synced.pulled) {
+        setCharter(synced.charter);
+        if (user) await saveCharter(id, synced.charter, user.uid);
+      }
     }).catch((err: unknown) => setError(userFacingError(err, "Could not create the Google Drive folder.")));
   }
 
@@ -280,18 +297,15 @@ export function ProjectWorkspacePage() {
     );
   }
 
-  const charterReady = Boolean(charter.scope.trim() && charter.roles.trim() && charter.cadence.trim());
+  const charterReady = Boolean(
+    charter.objectives.trim() &&
+      charter.researcherDuties.trim() &&
+      charter.seniorDuties.trim() &&
+      charter.duration.trim() &&
+      charter.cadence.trim(),
+  );
   const drive = projectDrive(project.id);
   const driveDoc = (name: string) => drive?.files.find((file) => file.kind === "document" && file.name === name);
-  const charterFields = [
-    ["scope", "Scope"],
-    ["roles", "Roles"],
-    ["cadence", "Cadence"],
-    ["resources", "Resources"],
-    ["integrity", "Integrity and risk"],
-    ["authorship", "Authorship and IP"],
-    ["release", "Release expectations"],
-  ] as const;
   const requested = searchParams.get("panel");
   const panel: PanelId = isPanel(requested) ? requested : admin ? "overview" : "work";
   function showPanel(next: PanelId) {
@@ -306,7 +320,7 @@ export function ProjectWorkspacePage() {
       <header className="workspace-head">
         <div className="container">
           <div className="workspace-kicker">
-            <p className="mono">{project.researchArea || "Project"}</p>
+            <p className="mono">{projectTypeLabel(project)}</p>
             <Link className="btn btn-ghost btn-compact" to="/dashboard">
               <Icon name="dashboard" />
               Dashboard
@@ -316,6 +330,7 @@ export function ProjectWorkspacePage() {
             <div>
               <h1>{project.title || "Untitled project"}</h1>
               <p className="lede">{project.summary || "A summary has not been added yet."}</p>
+              {project.researchArea ? <p className="quiet">{project.researchArea}</p> : null}
             </div>
             <div className="workspace-status">
               <StatusChip status={project.status || "scoping"} />
@@ -413,7 +428,7 @@ export function ProjectWorkspacePage() {
             <button type="button" onClick={() => showPanel("charter")}>
               <Mark name="charter">Project Charter</Mark>
               <p>{project.charterSigned ? "Signed" : "Not signed yet"}</p>
-              <p className="quiet">{charter.scope || "Scope has not been written yet."}</p>
+              <p className="quiet">{charter.objectives || "Objectives have not been written yet."}</p>
             </button>
             <button type="button" onClick={() => showPanel("milestones")}>
               <Mark name="milestone">Milestones</Mark>
@@ -483,16 +498,13 @@ export function ProjectWorkspacePage() {
                   Project health
                   <HealthChoices value={overview.health} onChange={(health) => setOverview({ ...overview, health })} />
                 </label>
-                <label>
-                  Status
-                  <select value={overview.status} onChange={(event) => setOverview({ ...overview, status: event.target.value })}>
-                    {PROJECT_STATUSES.map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <SearchSelect
+                  label="Status"
+                  options={PROJECT_STATUSES.map(([value, label]) => ({ value, label }))}
+                  value={overview.status}
+                  onChange={(status) => setOverview({ ...overview, status })}
+                  placeholder="Project status…"
+                />
                 <label className="check">
                   <input
                     type="checkbox"
@@ -516,7 +528,9 @@ export function ProjectWorkspacePage() {
           <div className="workspace-panel">
           <h2><Mark name="charter">Project Charter</Mark></h2>
           <p className="quiet">
-            {project.charterSigned ? "Signed." : "Write the agreed scope."}
+            {project.charterSigned
+              ? "Signed."
+              : "Agree objectives, roles, cadence, integrity, and release expectations. Saving always updates the Project Charter Google Doc."}
           </p>
           {driveDoc("Project Charter") ? (
             <p>
@@ -524,7 +538,7 @@ export function ProjectWorkspacePage() {
             </p>
           ) : null}
           <dl className="charter-read">
-            {charterFields.map(([key, label]) => (
+            {CHARTER_FIELD_LABELS.map(({ key, label }) => (
               <div key={key}>
                 <dt>{label}</dt>
                 <dd>{charter[key] || "—"}</dd>
@@ -538,25 +552,50 @@ export function ProjectWorkspacePage() {
               event.preventDefault();
               void run(
                 "charter",
-                () => saveCharter(project.id, charter, user.uid),
-                "Project Charter saved.",
-                () => updateFiledDocument(
-                  project.id,
-                  "Project Charter",
-                  charterBlocks(project.title || "Project", charter, Boolean(project.charterSigned)),
-                ),
+                async () => {
+                  await saveCharter(project.id, charter, user.uid);
+                  const result = await syncCharterToDrive(
+                    project.id,
+                    project.title || "Project",
+                    charter,
+                    Boolean(project.charterSigned),
+                    { interactive: true },
+                  );
+                  if (result !== "updated") {
+                    throw new Error("Could not update the Project Charter Google Doc. Sign in with Google and try again.");
+                  }
+                },
+                "Project Charter saved and synced to Google Drive.",
               );
             }}
           >
-            {charterFields.map(([key, label]) => (
-              <label key={key}>
-                {label}
-                <textarea value={charter[key]} onChange={(event) => setCharter({ ...charter, [key]: event.target.value })} />
-              </label>
-            ))}
+            <CharterFields draft={charter} onChange={setCharter} />
             <div className="button-row">
               <button className="btn btn-primary" type="submit" disabled={busy !== ""}>
                 {busy === "charter" ? "Saving…" : "Save charter"}
+              </button>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                disabled={busy !== ""}
+                onClick={() =>
+                  void run("charter-pull", async () => {
+                    const synced = await syncCharterWithDrive({
+                      projectId: project.id,
+                      projectTitle: project.title || "Project",
+                      charter,
+                      signed: Boolean(project.charterSigned),
+                      interactive: true,
+                    });
+                    setCharter(synced.charter);
+                    await saveCharter(project.id, synced.charter, user.uid);
+                    if (synced.pushed !== "updated") {
+                      throw new Error("Could not update the Project Charter Google Doc. Sign in with Google and try again.");
+                    }
+                  }, "Project Charter synced with Google Drive.")
+                }
+              >
+                {busy === "charter-pull" ? "Syncing…" : "Sync with Drive"}
               </button>
             </div>
           </form>
@@ -569,13 +608,20 @@ export function ProjectWorkspacePage() {
                 disabled={busy !== "" || !charterReady}
                 onClick={() => void run(
                   "sign",
-                  () => markProjectCharterSigned(project.id),
-                  "Project Charter recorded as signed.",
-                  () => updateFiledDocument(
-                    project.id,
-                    "Project Charter",
-                    charterBlocks(project.title || "Project", charter, true),
-                  ),
+                  async () => {
+                    const result = await syncCharterToDrive(
+                      project.id,
+                      project.title || "Project",
+                      charter,
+                      true,
+                      { interactive: true },
+                    );
+                    if (result !== "updated") {
+                      throw new Error("Could not update the Project Charter Google Doc. Sign in with Google and try again.");
+                    }
+                    await markProjectCharterSigned(project.id);
+                  },
+                  "Project Charter recorded as signed and synced to Google Drive.",
                 )}
               >
                 Charter signed
@@ -824,18 +870,18 @@ export function ProjectWorkspacePage() {
                       );
                     }}
                   >
-                    <label>
-                      Decision
-                      <select
-                        value={decisions[item.id] || "requested"}
-                        onChange={(event) => setDecisions({ ...decisions, [item.id]: event.target.value })}
-                      >
-                        <option value="requested">Requested</option>
-                        <option value="approved">Approved</option>
-                        <option value="partial">Partially approved</option>
-                        <option value="declined">Declined</option>
-                      </select>
-                    </label>
+                    <SearchSelect
+                      label="Decision"
+                      options={[
+                        { value: "requested", label: "Requested" },
+                        { value: "approved", label: "Approved" },
+                        { value: "partial", label: "Partially approved" },
+                        { value: "declined", label: "Declined" },
+                      ]}
+                      value={decisions[item.id] || "requested"}
+                      onChange={(status) => setDecisions({ ...decisions, [item.id]: status })}
+                      placeholder="Decision…"
+                    />
                     <label>
                       Limits
                       <input value={limits[item.id] || ""} onChange={(event) => setLimits({ ...limits, [item.id]: event.target.value })} />
@@ -872,16 +918,13 @@ export function ProjectWorkspacePage() {
               );
             }}
           >
-            <label>
-              Type
-              <select value={resource.type} onChange={(event) => setResource({ ...resource, type: event.target.value })}>
-                {RESOURCE_TYPES.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SearchSelect
+              label="Type"
+              options={RESOURCE_TYPES.map(([value, label]) => ({ value, label }))}
+              value={resource.type}
+              onChange={(type) => setResource({ ...resource, type })}
+              placeholder="Resource type…"
+            />
             <label>
               Request
               <textarea required value={resource.request} onChange={(event) => setResource({ ...resource, request: event.target.value })} />
@@ -974,30 +1017,24 @@ export function ProjectWorkspacePage() {
               );
             }}
           >
-            <label>
-              Type
-              <select value={output.type} onChange={(event) => setOutput({ ...output, type: event.target.value })}>
-                {OUTPUT_TYPES.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SearchSelect
+              label="Type"
+              options={OUTPUT_TYPES.map(([value, label]) => ({ value, label }))}
+              value={output.type}
+              onChange={(type) => setOutput({ ...output, type })}
+              placeholder="Output type…"
+            />
             <label>
               Title
               <input required value={output.title} onChange={(event) => setOutput({ ...output, title: event.target.value })} />
             </label>
-            <label>
-              Status
-              <select value={output.status} onChange={(event) => setOutput({ ...output, status: event.target.value })}>
-                {OUTPUT_STATUSES.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SearchSelect
+              label="Status"
+              options={OUTPUT_STATUSES.map(([value, label]) => ({ value, label }))}
+              value={output.status}
+              onChange={(status) => setOutput({ ...output, status })}
+              placeholder="Output status…"
+            />
             <label>
               Link
               <input value={output.link} onChange={(event) => setOutput({ ...output, link: event.target.value })} />

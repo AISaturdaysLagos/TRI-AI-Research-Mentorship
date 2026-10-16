@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { roleLabel, workspacePath } from "../types/domain";
+import { CloseIcon } from "./CloseButton";
 import { Icon, type IconName } from "./Icon";
 import { Wordmark } from "./Wordmark";
 
@@ -123,14 +124,18 @@ export function Header() {
             </>
           )}
           <button
-            className="hdr-burger"
+            className={open ? "hdr-burger is-open" : "hdr-burger"}
             type="button"
             aria-expanded={open}
-            aria-label="Open menu"
+            aria-label={open ? "Close menu" : "Open menu"}
             onClick={() => setOpen((value) => !value)}
           >
-            <span />
-            <span />
+            {open ? <CloseIcon /> : (
+              <>
+                <span />
+                <span />
+              </>
+            )}
           </button>
         </div>
       </div>
