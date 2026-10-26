@@ -1,5 +1,6 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { firestore } from "./firebase";
+import { cachedRead, invalidateReads, reads } from "./readCache";
 
 export type WorkspaceProject = {
   id: string;
@@ -200,6 +201,7 @@ export async function saveProjectDrive(
     },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function saveProjectOverview(
@@ -227,6 +229,7 @@ export async function saveProjectOverview(
     },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function getCharter(projectId: string) {
@@ -282,6 +285,7 @@ export async function saveCharter(projectId: string, charter: CharterRecord, uid
     updatedAt: serverTimestamp(),
   };
   await setDoc(doc(db, "projects", projectId, "charter", "current"), next);
+  invalidateReads();
 }
 
 async function listNamed<T>(projectId: string, name: string) {
@@ -345,6 +349,7 @@ export async function addWorkTask(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
   return created.id;
 }
 
@@ -367,22 +372,27 @@ export async function saveWorkTask(
     },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function removeWorkTask(projectId: string, taskId: string) {
   const db = dbOrThrow();
   await deleteDoc(doc(db, "projects", projectId, "workTasks", taskId));
+  invalidateReads();
 }
 
-export async function listProjectActivities(projectIds: string[]) {
-  return Promise.all(
-    projectIds.map(async (projectId) => ({
-      projectId,
-      milestones: await listMilestones(projectId),
-      updates: await listProgress(projectId),
-      resources: await listResources(projectId),
-      outputs: await listOutputs(projectId),
-    })),
+export function listProjectActivities(projectIds: string[]) {
+  const ids = [...projectIds];
+  return cachedRead(reads.activities(ids), () =>
+    Promise.all(
+      ids.map(async (projectId) => ({
+        projectId,
+        milestones: await listMilestones(projectId),
+        updates: await listProgress(projectId),
+        resources: await listResources(projectId),
+        outputs: await listOutputs(projectId),
+      })),
+    ),
   );
 }
 
@@ -409,6 +419,7 @@ export async function addMilestone(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
 }
 
 export async function setMilestoneStatus(projectId: string, milestoneId: string, status: "open" | "done") {
@@ -418,6 +429,7 @@ export async function setMilestoneStatus(projectId: string, milestoneId: string,
     { status, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function addProgress(
@@ -437,6 +449,7 @@ export async function addProgress(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
 }
 
 export async function addResource(projectId: string, input: { type: string; request: string }, uid: string) {
@@ -450,6 +463,7 @@ export async function addResource(projectId: string, input: { type: string; requ
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
 }
 
 export async function decideResource(projectId: string, resourceId: string, status: string, limits: string) {
@@ -459,6 +473,7 @@ export async function decideResource(projectId: string, resourceId: string, stat
     { status, limits: clip(limits, 480), updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function addOutput(
@@ -479,6 +494,7 @@ export async function addOutput(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
 }
 
 export async function setOutputPublic(projectId: string, outputId: string, isPublic: boolean) {
@@ -488,4 +504,5 @@ export async function setOutputPublic(projectId: string, outputId: string, isPub
     { public: isPublic, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }

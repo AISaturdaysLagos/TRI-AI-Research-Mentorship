@@ -34,6 +34,7 @@ import {
   markProjectScoped,
   revokeProjectInvite,
 } from "../lib/records";
+import { peekRead, reads } from "../lib/readCache";
 import { userFacingError } from "../lib/errors";
 
 type Person = { uid?: string; name?: string };
@@ -241,12 +242,22 @@ function nextMeeting(project: ProjectRow, meetings: MeetingRow[]) {
     })[0];
 }
 
+function warmProjects() {
+  const projects = peekRead<ProjectRow[]>(reads.projects);
+  const meetings = peekRead<MeetingRow[]>(reads.meetings);
+  const invites = peekRead<InviteRow[]>(reads.invites);
+  const directory = peekRead<DirectoryRow[]>(reads.directory);
+  if (!projects || !meetings || !invites || !directory) return undefined;
+  return { projects, meetings, invites, directory };
+}
+
 export function AdminProjectsPage() {
   const { profile } = useAuth();
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [meetings, setMeetings] = useState<MeetingRow[]>([]);
-  const [invites, setInvites] = useState<InviteRow[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const warm = warmProjects();
+  const [projects, setProjects] = useState<ProjectRow[]>(() => warm?.projects ?? []);
+  const [meetings, setMeetings] = useState<MeetingRow[]>(() => warm?.meetings ?? []);
+  const [invites, setInvites] = useState<InviteRow[]>(() => warm?.invites ?? []);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
   const [notice, setNotice] = useState("");
   const [awardLink, setAwardLink] = useState("");
   const [error, setError] = useState("");
@@ -262,7 +273,7 @@ export function AdminProjectsPage() {
   });
   const [prepared, setPrepared] = useState<EmailDraft[]>([]);
   const [view, setView] = useState("attention");
-  const [directory, setDirectory] = useState<DirectoryRow[]>([]);
+  const [directory, setDirectory] = useState<DirectoryRow[]>(() => warm?.directory ?? []);
   const researcherOptions = useMemo(
     () => peopleForRole("researcher", directory, projects, invites),
     [directory, projects, invites],

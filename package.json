@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:start": "sh scripts/dev.sh",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "emulators": "sh scripts/emulators.sh",

@@ -11,6 +11,7 @@ import {
   where,
 } from "firebase/firestore";
 import { firebaseAuth, firestore } from "./firebase";
+import { cachedRead, invalidateReads, reads } from "./readCache";
 import { formatZonedWhen } from "./timezones";
 import { userFacingError } from "./errors";
 
@@ -94,27 +95,37 @@ export function formatMeetingWhen(value: { toDate?: () => Date } | undefined) {
   return formatZonedWhen(date, "Africa/Lagos");
 }
 
-export async function listMeetings() {
+export function listMeetings() {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "meetings"));
-  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as MeetingRow[];
+  if (!db) return Promise.resolve([] as MeetingRow[]);
+  return cachedRead(reads.meetings, async () => {
+    const snapshot = await getDocs(collection(db, "meetings"));
+    return snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as MeetingRow[];
+  });
 }
 
-export async function listParticipantMeetings(uid: string) {
+export function listParticipantMeetings(uid: string, options?: { fresh?: boolean }) {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(
-    query(collection(db, "meetings"), where("participantIds", "array-contains", uid)),
+  if (!db) return Promise.resolve([] as MeetingRow[]);
+  return cachedRead(
+    reads.participantMeetings(uid),
+    async () => {
+      const snapshot = await getDocs(
+        query(collection(db, "meetings"), where("participantIds", "array-contains", uid)),
+      );
+      return snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as MeetingRow[];
+    },
+    options?.fresh === true,
   );
-  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as MeetingRow[];
 }
 
-export async function listMeetingReplies(meetingId: string) {
+export function listMeetingReplies(meetingId: string) {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "meetings", meetingId, "responses"));
-  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as MeetingReply[];
+  if (!db) return Promise.resolve([] as MeetingReply[]);
+  return cachedRead(reads.meetingReplies(meetingId), async () => {
+    const snapshot = await getDocs(collection(db, "meetings", meetingId, "responses"));
+    return snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as MeetingReply[];
+  });
 }
 
 export const scopingMeetingTaken =
@@ -270,6 +281,7 @@ export async function saveMeeting(input: {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
   return meetingId;
 }
 
@@ -287,12 +299,14 @@ export async function updateMeeting(id: string, input: { starts: Date; ends: Dat
     },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function cancelMeeting(id: string) {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
   await setDoc(doc(db, "meetings", id), { status: "cancelled", updatedAt: serverTimestamp() }, { merge: true });
+  invalidateReads();
 }
 
 export async function saveMeetingReply(meetingId: string, uid: string, response: MeetingResponseValue, note: string) {
@@ -303,4 +317,5 @@ export async function saveMeetingReply(meetingId: string, uid: string, response:
     note,
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
 }

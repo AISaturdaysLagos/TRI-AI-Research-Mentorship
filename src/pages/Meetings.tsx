@@ -10,6 +10,8 @@ import { MeetingSchedule } from "../components/MeetingSchedule";
 import { Mark } from "../components/Icon";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { useAuth } from "../lib/auth";
+import { prefetchParticipantWorkspace } from "../lib/prefetchWorkspace";
+import { peekRead, reads } from "../lib/readCache";
 import { calendarTemplateLink, createGoogleCalendarEvent, nextSaturdayAtFourWat, watDateAndTime } from "../lib/calendar";
 import { PROGRAMME_ZONE, formatNoteClocks, formatZonedSpan, loadTimezones, saveTimezone, zonedWallTime } from "../lib/timezones";
 import {
@@ -749,15 +751,55 @@ function ResearcherMeetingForm({
   );
 }
 
+function warmMeetings(uid: string, role: string) {
+  const rows = peekRead<MeetingRow[]>(reads.participantMeetings(uid));
+  if (!rows) return undefined;
+  const replies: Record<string, MeetingReply[]> = {};
+  for (const meeting of rows) {
+    const replyRows = peekRead<MeetingReply[]>(reads.meetingReplies(meeting.id));
+    if (!replyRows) return undefined;
+    replies[meeting.id] = replyRows;
+  }
+  const people = rows.flatMap((meeting) => meetingAttendees(meeting).map((person) => person.uid));
+  const zones = peekRead<Record<string, string>>(reads.timezones([uid, ...people]));
+  if (!zones) return undefined;
+  const waiting: string[] = [];
+  if (role === "senior_researcher") {
+    const matches = peekRead<{ proposalId?: string; mentorId?: string; introduced?: boolean; title?: string }[]>(reads.matches);
+    const projects = peekRead<{ id: string; title?: string; status?: string }[]>(reads.participantProjects(uid));
+    if (!matches || !projects) return undefined;
+    const scheduledScoping = new Set(
+      rows.filter((item) => item.kind === "scoping" && item.status !== "cancelled").map((item) => item.proposalId),
+    );
+    const scheduledProjects = new Set(
+      rows.filter((item) => item.kind === "project" && item.status !== "cancelled").map((item) => item.projectId),
+    );
+    for (const match of matches) {
+      if (match.mentorId === uid && match.introduced && match.proposalId && !scheduledScoping.has(match.proposalId)) {
+        waiting.push(`${match.title || "A proposal"} is ready for a scoping meeting. Set the time below.`);
+      }
+    }
+    for (const project of projects) {
+      if (project.status === "active" && !scheduledProjects.has(project.id)) {
+        waiting.push(`${project.title || "An active project"} has no meeting scheduled. Set one below.`);
+      }
+    }
+  }
+  return { meetings: rows, replies, zones, waiting };
+}
+
 export function MeetingsPage() {
   const { user, profile } = useAuth();
-  const [meetings, setMeetings] = useState<MeetingRow[]>([]);
-  const [replies, setReplies] = useState<Record<string, MeetingReply[]>>({});
-  const [waiting, setWaiting] = useState<string[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const workspaceRole = profile?.role === "researcher" || profile?.role === "senior_researcher" ? profile.role : null;
+  if (user && workspaceRole) prefetchParticipantWorkspace(workspaceRole, user.uid, user.email || "");
+  const warm = user && workspaceRole ? warmMeetings(user.uid, workspaceRole) : undefined;
+  const [meetings, setMeetings] = useState<MeetingRow[]>(() => warm?.meetings ?? []);
+  const [replies, setReplies] = useState<Record<string, MeetingReply[]>>(() => warm?.replies ?? {});
+  const [waiting, setWaiting] = useState<string[]>(() => warm?.waiting ?? []);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
   const [error, setError] = useState("");
   const [showArchive, setShowArchive] = useState(false);
-  const [zones, setZones] = useState<Record<string, string>>({});
+  const [zones, setZones] = useState<Record<string, string>>(() => warm?.zones ?? {});
 
   async function reload(uid: string, role: string) {
     const rows = await listParticipantMeetings(uid);

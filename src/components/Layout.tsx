@@ -1,5 +1,7 @@
+import { Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { firebaseLoaded, loadFirebase } from "../lib/firebase";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
 import { Loader } from "./Loader";
@@ -12,11 +14,28 @@ export function PublicLayout() {
       </a>
       <Header />
       <main id="main">
-        <Outlet />
+        <Suspense fallback={<Loader label="Loading the programme" />}>
+          <Outlet />
+        </Suspense>
       </main>
       <Footer />
     </div>
   );
+}
+
+export function SdkGate() {
+  const [ready, setReady] = useState(firebaseLoaded);
+  useEffect(() => {
+    let live = true;
+    loadFirebase().finally(() => {
+      if (live) setReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!ready) return <Loader label="Loading the programme" />;
+  return <Outlet />;
 }
 
 export function RequireAuth() {

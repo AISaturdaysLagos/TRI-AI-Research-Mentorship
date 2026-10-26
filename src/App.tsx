@@ -1,28 +1,40 @@
+import { lazy } from "react";
 import { HashRouter, Route, Routes } from "react-router-dom";
-import { PublicLayout, RequireAuth } from "./components/Layout";
+import { PublicLayout, RequireAuth, SdkGate } from "./components/Layout";
 import { AuthProvider } from "./lib/auth";
 import { AboutPage } from "./pages/About";
-import { AccountPage } from "./pages/Account";
-import { AdminHomePage, AdminLayout, AdminMentorsPage, AdminProposalsPage, AdminResearchersPage } from "./pages/Admin";
-import { AdminReportsPage } from "./pages/AdminReports";
-import { AdminTasksPage } from "./pages/AdminTasks";
-import { AdminMeetingsPage } from "./pages/AdminMeetings";
-import { AdminProjectsPage } from "./pages/AdminProjects";
-import { AdminMatchingPage } from "./pages/AdminMatching";
-import { AdminReviewPage } from "./pages/AdminReview";
-import { ApplyResearcherPage } from "./pages/ApplyResearcher";
-import { ApplySeniorPage } from "./pages/ApplySenior";
-import { AwardPage } from "./pages/Award";
-import { DashboardPage } from "./pages/Dashboard";
 import { HomePage } from "./pages/Home";
 import { HowItWorksPage } from "./pages/HowItWorks";
-import { JoinProjectPage } from "./pages/JoinProject";
-import { LoginPage } from "./pages/Login";
-import { MeetingsPage } from "./pages/Meetings";
-import { ProjectWorkspacePage } from "./pages/ProjectWorkspace";
-import { ResearchPage } from "./pages/Research";
 import { ResearchersPage } from "./pages/Researchers";
 import { SeniorResearchersPage } from "./pages/SeniorResearchers";
+
+const AccountPage = lazy(() => import("./pages/Account").then((m) => ({ default: m.AccountPage })));
+const AdminReportsPage = lazy(() => import("./pages/AdminReports").then((m) => ({ default: m.AdminReportsPage })));
+const AdminTasksPage = lazy(() => import("./pages/AdminTasks").then((m) => ({ default: m.AdminTasksPage })));
+const AdminMeetingsPage = lazy(() => import("./pages/AdminMeetings").then((m) => ({ default: m.AdminMeetingsPage })));
+const AdminProjectsPage = lazy(() => import("./pages/AdminProjects").then((m) => ({ default: m.AdminProjectsPage })));
+const AdminMatchingPage = lazy(() => import("./pages/AdminMatching").then((m) => ({ default: m.AdminMatchingPage })));
+const AdminReviewPage = lazy(() => import("./pages/AdminReview").then((m) => ({ default: m.AdminReviewPage })));
+const ApplyResearcherPage = lazy(() =>
+  import("./pages/ApplyResearcher").then((m) => ({ default: m.ApplyResearcherPage })),
+);
+const ApplySeniorPage = lazy(() => import("./pages/ApplySenior").then((m) => ({ default: m.ApplySeniorPage })));
+const AwardPage = lazy(() => import("./pages/Award").then((m) => ({ default: m.AwardPage })));
+const DashboardPage = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.DashboardPage })));
+const JoinProjectPage = lazy(() => import("./pages/JoinProject").then((m) => ({ default: m.JoinProjectPage })));
+const LoginPage = lazy(() => import("./pages/Login").then((m) => ({ default: m.LoginPage })));
+const MeetingsPage = lazy(() => import("./pages/Meetings").then((m) => ({ default: m.MeetingsPage })));
+const ProjectWorkspacePage = lazy(() =>
+  import("./pages/ProjectWorkspace").then((m) => ({ default: m.ProjectWorkspacePage })),
+);
+const ResearchPage = lazy(() => import("./pages/Research").then((m) => ({ default: m.ResearchPage })));
+
+const loadAdmin = () => import("./pages/Admin");
+const AdminHomePage = lazy(() => loadAdmin().then((m) => ({ default: m.AdminHomePage })));
+const AdminLayout = lazy(() => loadAdmin().then((m) => ({ default: m.AdminLayout })));
+const AdminMentorsPage = lazy(() => loadAdmin().then((m) => ({ default: m.AdminMentorsPage })));
+const AdminProposalsPage = lazy(() => loadAdmin().then((m) => ({ default: m.AdminProposalsPage })));
+const AdminResearchersPage = lazy(() => loadAdmin().then((m) => ({ default: m.AdminResearchersPage })));
 
 export function App() {
   return (
@@ -34,31 +46,33 @@ export function App() {
             <Route path="how-it-works" element={<HowItWorksPage />} />
             <Route path="researchers" element={<ResearchersPage />} />
             <Route path="senior-researchers" element={<SeniorResearchersPage />} />
-            <Route path="research" element={<ResearchPage />} />
             <Route path="about" element={<AboutPage />} />
-            <Route path="apply/researcher" element={<ApplyResearcherPage />} />
-            <Route path="apply/senior-researcher" element={<ApplySeniorPage />} />
-            <Route path="award/:token" element={<AwardPage />} />
-            <Route path="join/:token" element={<JoinProjectPage />} />
-            <Route path="login" element={<LoginPage />} />
-            <Route element={<RequireAuth />}>
-              <Route path="dashboard" element={<DashboardPage />} />
-              <Route path="dashboard/meetings" element={<MeetingsPage />} />
-              <Route path="account" element={<AccountPage />} />
-              <Route path="dashboard/application" element={<ApplyResearcherPage />} />
-              <Route path="dashboard/opportunities" element={<DashboardPage />} />
-              <Route path="dashboard/projects/:id" element={<ProjectWorkspacePage />} />
-              <Route path="admin" element={<AdminLayout />}>
-                <Route index element={<AdminHomePage />} />
-                <Route path="tasks" element={<AdminTasksPage />} />
-                <Route path="proposals" element={<AdminProposalsPage />} />
-                <Route path="proposals/:id" element={<AdminReviewPage />} />
-                <Route path="matching" element={<AdminMatchingPage />} />
-                <Route path="meetings" element={<AdminMeetingsPage />} />
-                <Route path="projects" element={<AdminProjectsPage />} />
-                <Route path="researchers" element={<AdminResearchersPage />} />
-                <Route path="mentors" element={<AdminMentorsPage />} />
-                <Route path="reports" element={<AdminReportsPage />} />
+            <Route element={<SdkGate />}>
+              <Route path="research" element={<ResearchPage />} />
+              <Route path="apply/researcher" element={<ApplyResearcherPage />} />
+              <Route path="apply/senior-researcher" element={<ApplySeniorPage />} />
+              <Route path="award/:token" element={<AwardPage />} />
+              <Route path="join/:token" element={<JoinProjectPage />} />
+              <Route path="login" element={<LoginPage />} />
+              <Route element={<RequireAuth />}>
+                <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="dashboard/meetings" element={<MeetingsPage />} />
+                <Route path="account" element={<AccountPage />} />
+                <Route path="dashboard/application" element={<ApplyResearcherPage />} />
+                <Route path="dashboard/opportunities" element={<DashboardPage />} />
+                <Route path="dashboard/projects/:id" element={<ProjectWorkspacePage />} />
+                <Route path="admin" element={<AdminLayout />}>
+                  <Route index element={<AdminHomePage />} />
+                  <Route path="tasks" element={<AdminTasksPage />} />
+                  <Route path="proposals" element={<AdminProposalsPage />} />
+                  <Route path="proposals/:id" element={<AdminReviewPage />} />
+                  <Route path="matching" element={<AdminMatchingPage />} />
+                  <Route path="meetings" element={<AdminMeetingsPage />} />
+                  <Route path="projects" element={<AdminProjectsPage />} />
+                  <Route path="researchers" element={<AdminResearchersPage />} />
+                  <Route path="mentors" element={<AdminMentorsPage />} />
+                  <Route path="reports" element={<AdminReportsPage />} />
+                </Route>
               </Route>
             </Route>
           </Route>

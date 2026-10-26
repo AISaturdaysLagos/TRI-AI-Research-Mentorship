@@ -25,6 +25,9 @@ import {
   type SeniorProfileDraft,
 } from "../types/domain";
 import { firestore, fixturesEnabled } from "./firebase";
+import { cachedRead, invalidateReads, reads } from "./readCache";
+
+type ReadOptions = { fresh?: boolean };
 
 function visibleRows<T>(rows: T[]) {
   if (fixturesEnabled) return rows;
@@ -136,6 +139,7 @@ export async function saveProposal(
     },
     { merge: true },
   );
+  invalidateReads();
   return ref.id;
 }
 
@@ -146,18 +150,24 @@ export async function listOwnedProposals(ownerId: string) {
   return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
 }
 
-export async function listResearcherProposals(uid: string) {
+export function listResearcherProposals(uid: string, options?: ReadOptions) {
   const db = firestore();
-  if (!db) return [];
-  const [owned, shared] = await Promise.all([
-    getDocs(query(collection(db, "proposals"), where("ownerId", "==", uid))),
-    getDocs(query(collection(db, "proposals"), where("researcherIds", "array-contains", uid))),
-  ]);
-  const byId = new Map<string, { id: string }>();
-  for (const item of [...owned.docs, ...shared.docs]) {
-    byId.set(item.id, { id: item.id, ...item.data() });
-  }
-  return visibleRows([...byId.values()]);
+  if (!db) return Promise.resolve([]);
+  return cachedRead(
+    reads.researcherProposals(uid),
+    async () => {
+      const [owned, shared] = await Promise.all([
+        getDocs(query(collection(db, "proposals"), where("ownerId", "==", uid))),
+        getDocs(query(collection(db, "proposals"), where("researcherIds", "array-contains", uid))),
+      ]);
+      const byId = new Map<string, { id: string }>();
+      for (const item of [...owned.docs, ...shared.docs]) {
+        byId.set(item.id, { id: item.id, ...item.data() });
+      }
+      return visibleRows([...byId.values()]);
+    },
+    options?.fresh === true,
+  );
 }
 
 export async function listAwardsForRecipient(uid: string) {
@@ -195,18 +205,30 @@ export function settledMatchProposalIds(
   return ids;
 }
 
-export async function listParticipantProjects(uid: string) {
+export function listParticipantProjects(uid: string, options?: ReadOptions) {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(query(collection(db, "projects"), where("participantIds", "array-contains", uid)));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(
+    reads.participantProjects(uid),
+    async () => {
+      const snapshot = await getDocs(query(collection(db, "projects"), where("participantIds", "array-contains", uid)));
+      return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    },
+    options?.fresh === true,
+  );
 }
 
-export async function listProposals() {
+export function listProposals(options?: ReadOptions) {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "proposals"));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(
+    reads.proposals,
+    async () => {
+      const snapshot = await getDocs(collection(db, "proposals"));
+      return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    },
+    options?.fresh === true,
+  );
 }
 
 export async function getProposal(id: string) {
@@ -220,6 +242,7 @@ export async function updateProposalStatus(id: string, status: string) {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
   await setDoc(doc(db, "proposals", id), { status, updatedAt: serverTimestamp() }, { merge: true });
+  invalidateReads();
 }
 
 export async function getReview(proposalId: string) {
@@ -255,29 +278,33 @@ export async function saveReview(proposalId: string, review: ReviewRecord) {
   );
 }
 
-export async function listAdmins() {
+export function listAdmins() {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
-  return snapshot.docs
-    .map((item) => ({
-      uid: item.id,
-      name: String(item.data().displayName || "").trim() || "TRI AI Admin",
-      email: String(item.data().email ?? ""),
-    }))
-    .filter((person) => person.uid && person.name);
+  if (!db) return Promise.resolve([]);
+  return cachedRead(reads.admins, async () => {
+    const snapshot = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
+    return snapshot.docs
+      .map((item) => ({
+        uid: item.id,
+        name: String(item.data().displayName || "").trim() || "TRI AI Admin",
+        email: String(item.data().email ?? ""),
+      }))
+      .filter((person) => person.uid && person.name);
+  });
 }
 
-export async function listDirectory() {
+export function listDirectory() {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "users"));
-  return snapshot.docs.map((item) => ({
-    id: item.id,
-    email: String(item.data().email ?? ""),
-    displayName: String(item.data().displayName ?? ""),
-    role: String(item.data().role ?? ""),
-  }));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(reads.directory, async () => {
+    const snapshot = await getDocs(collection(db, "users"));
+    return snapshot.docs.map((item) => ({
+      id: item.id,
+      email: String(item.data().email ?? ""),
+      displayName: String(item.data().displayName ?? ""),
+      role: String(item.data().role ?? ""),
+    }));
+  });
 }
 
 export async function listStaff() {
@@ -312,6 +339,7 @@ export async function saveResearcherProfile(uid: string, draft: ResearcherProfil
     { ...draft, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function getResearcherProfile(uid: string) {
@@ -329,6 +357,7 @@ export async function saveSeniorProfile(uid: string, draft: SeniorProfileDraft) 
     { ...draft, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function getSeniorProfile(uid: string) {
@@ -338,18 +367,26 @@ export async function getSeniorProfile(uid: string) {
   return visibleRow(snapshot.exists() ? snapshot.data() : null);
 }
 
-export async function listSeniorProfiles() {
+export function listSeniorProfiles(options?: ReadOptions) {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "seniorResearcherProfiles"));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(
+    reads.seniors,
+    async () => {
+      const snapshot = await getDocs(collection(db, "seniorResearcherProfiles"));
+      return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    },
+    options?.fresh === true,
+  );
 }
 
-export async function listResearcherProfiles() {
+export function listResearcherProfiles() {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "researcherProfiles"));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(reads.researchers, async () => {
+    const snapshot = await getDocs(collection(db, "researcherProfiles"));
+    return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  });
 }
 
 /** Remove a Researcher from the programme directory (profile + user record). Auth login may still exist. */
@@ -362,6 +399,7 @@ export async function deleteResearcherFromDirectory(uid: string) {
   batch.delete(doc(db, "researcherProfiles", trimmed));
   batch.delete(doc(db, "users", trimmed));
   await batch.commit();
+  invalidateReads();
 }
 
 /** Remove a Senior Researcher from the programme directory (profile + user record). Auth login may still exist. */
@@ -374,6 +412,7 @@ export async function deleteSeniorResearcherFromDirectory(uid: string) {
   batch.delete(doc(db, "seniorResearcherProfiles", trimmed));
   batch.delete(doc(db, "users", trimmed));
   await batch.commit();
+  invalidateReads();
 }
 
 export async function updateMentorPool(
@@ -388,22 +427,29 @@ export async function updateMentorPool(
     { availability, poolStatus, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 const CURRENT_PROJECT_STATUSES = ["active", "scoping", "internal_review"];
 
-export async function listResearchProjects() {
+export function listResearchProjects(options?: ReadOptions) {
   const db = firestore();
-  if (!db) return [];
-  const [published, current] = await Promise.all([
-    getDocs(query(collection(db, "projects"), where("publicShowcase", "==", true))),
-    getDocs(query(collection(db, "projects"), where("status", "in", CURRENT_PROJECT_STATUSES))),
-  ]);
-  const byId = new Map<string, { id: string }>();
-  for (const item of [...published.docs, ...current.docs]) {
-    byId.set(item.id, { id: item.id, ...item.data() });
-  }
-  return visibleRows([...byId.values()]);
+  if (!db) return Promise.resolve([]);
+  return cachedRead(
+    reads.researchProjects,
+    async () => {
+      const [published, current] = await Promise.all([
+        getDocs(query(collection(db, "projects"), where("publicShowcase", "==", true))),
+        getDocs(query(collection(db, "projects"), where("status", "in", CURRENT_PROJECT_STATUSES))),
+      ]);
+      const byId = new Map<string, { id: string }>();
+      for (const item of [...published.docs, ...current.docs]) {
+        byId.set(item.id, { id: item.id, ...item.data() });
+      }
+      return visibleRows([...byId.values()]);
+    },
+    options?.fresh === true,
+  );
 }
 
 export async function getAward(token: string) {
@@ -425,20 +471,25 @@ export async function saveAwardScope(
     timeline: scope.timeline.slice(0, 3999),
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
 }
 
-export async function listMentorMatches(mentorId: string) {
+export function listMentorMatches(mentorId: string) {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(query(collection(db, "matches"), where("mentorId", "==", mentorId)));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(reads.mentorMatches(mentorId), async () => {
+    const snapshot = await getDocs(query(collection(db, "matches"), where("mentorId", "==", mentorId)));
+    return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  });
 }
 
-export async function listProgrammeIntroductions() {
+export function listProgrammeIntroductions() {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(query(collection(db, "matches"), where("introduced", "==", true)));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(reads.introductions, async () => {
+    const snapshot = await getDocs(query(collection(db, "matches"), where("introduced", "==", true)));
+    return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  });
 }
 
 export async function listIntroducedMatches(uid: string) {
@@ -457,11 +508,17 @@ export async function listIntroducedMatches(uid: string) {
   return visibleRows([...byId.values()]);
 }
 
-export async function listMatches() {
+export function listMatches(options?: ReadOptions) {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "matches"));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(
+    reads.matches,
+    async () => {
+      const snapshot = await getDocs(collection(db, "matches"));
+      return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+    },
+    options?.fresh === true,
+  );
 }
 
 export async function sendMatchOpportunity(input: {
@@ -509,6 +566,7 @@ export async function sendMatchOpportunity(input: {
     { status: "matching", updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
   return ref.id;
 }
 
@@ -520,6 +578,7 @@ export async function respondToMatch(id: string, response: MatchResponse, respon
     { response, responseNote: responseNote.slice(0, 1999), updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 function clip(value: unknown, max: number) {
@@ -570,6 +629,7 @@ export async function expressMatchInterest(input: {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
   return id;
 }
 
@@ -672,14 +732,17 @@ export async function createAwardProject(input: {
     });
   }
   await batch.commit();
+  invalidateReads();
   return { awardId: awardRef.id, projectId: projectRef.id, invites };
 }
 
-export async function listProjects() {
+export function listProjects() {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "projects"));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(reads.projects, async () => {
+    const snapshot = await getDocs(collection(db, "projects"));
+    return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  });
 }
 
 export async function markProjectScoped(projectId: string, meetingId: string) {
@@ -690,6 +753,7 @@ export async function markProjectScoped(projectId: string, meetingId: string) {
     { scoped: true, scopedMeetingId: meetingId, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function markProjectCharterSigned(projectId: string) {
@@ -700,6 +764,7 @@ export async function markProjectCharterSigned(projectId: string) {
     { charterSigned: true, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 export async function activateProject(projectId: string) {
@@ -710,13 +775,16 @@ export async function activateProject(projectId: string) {
     { status: "active", updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
-export async function listProjectInvites() {
+export function listProjectInvites() {
   const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDocs(collection(db, "projectInvites"));
-  return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  if (!db) return Promise.resolve([]);
+  return cachedRead(reads.invites, async () => {
+    const snapshot = await getDocs(collection(db, "projectInvites"));
+    return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  });
 }
 
 type PendingInviteRow = {
@@ -732,27 +800,29 @@ type PendingInviteRow = {
 };
 
 /** Open invites addressed to this email where the person has not joined the project yet. */
-export async function listPendingInvitesForEmail(email: string, uid?: string) {
+export function listPendingInvitesForEmail(email: string, uid?: string) {
   const db = firestore();
-  if (!db) return [];
+  if (!db) return Promise.resolve([]);
   const guestEmail = email.trim().toLowerCase();
-  if (!guestEmail) return [];
-  const snapshot = await getDocs(
-    query(collection(db, "projectInvites"), where("guestEmail", "==", guestEmail), where("status", "==", "open")),
-  );
-  const rows = visibleRows(
-    snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as PendingInviteRow),
-  );
-  const pending: PendingInviteRow[] = [];
-  for (const row of rows) {
-    const projectId = String(row.projectId ?? "");
-    if (!projectId) continue;
-    const accepted = Array.isArray(row.acceptedIds) ? row.acceptedIds.map(String) : [];
-    if (uid && accepted.includes(uid)) continue;
-    if (uid && (await projectMembership(projectId, uid))) continue;
-    pending.push(row);
-  }
-  return pending;
+  if (!guestEmail) return Promise.resolve([]);
+  return cachedRead(reads.pendingInvites(guestEmail, uid || ""), async () => {
+    const snapshot = await getDocs(
+      query(collection(db, "projectInvites"), where("guestEmail", "==", guestEmail), where("status", "==", "open")),
+    );
+    const rows = visibleRows(
+      snapshot.docs.map((item) => ({ id: item.id, ...item.data() }) as PendingInviteRow),
+    );
+    const pending: PendingInviteRow[] = [];
+    for (const row of rows) {
+      const projectId = String(row.projectId ?? "");
+      if (!projectId) continue;
+      const accepted = Array.isArray(row.acceptedIds) ? row.acceptedIds.map(String) : [];
+      if (uid && accepted.includes(uid)) continue;
+      if (uid && (await projectMembership(projectId, uid))) continue;
+      pending.push(row);
+    }
+    return pending;
+  });
 }
 
 export async function getProjectInvite(token: string) {
@@ -791,6 +861,7 @@ export async function createProjectInvite(
       updatedAt: serverTimestamp(),
     });
   }
+  invalidateReads();
   return { token, ...person, role };
 }
 
@@ -801,6 +872,7 @@ export async function revokeProjectInvite(token: string) {
     status: "revoked",
     updatedAt: serverTimestamp(),
   });
+  invalidateReads();
 }
 
 export async function projectMembership(projectId: string, uid: string) {
@@ -890,6 +962,7 @@ export async function acceptProjectInvite(
       });
     }
   });
+  invalidateReads();
   return "joined" as const;
 }
 
@@ -918,6 +991,7 @@ function researchersForProposal(proposal: Record<string, unknown>, match: Introd
 export async function ensureProjectsForIntroducedMatches(matches: IntroducedMatch[]) {
   const db = firestore();
   if (!db) return;
+  let changed = false;
   const groups = new Map<string, IntroducedMatch[]>();
   for (const match of matches) {
     if (!match.introduced || !match.proposalId || !match.mentorId || !match.mentorName) continue;
@@ -961,6 +1035,7 @@ export async function ensureProjectsForIntroducedMatches(matches: IntroducedMatc
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      changed = true;
       continue;
     }
     const missing = seniors.filter((person) => person.uid && !existing.participantIds.includes(person.uid));
@@ -976,7 +1051,9 @@ export async function ensureProjectsForIntroducedMatches(matches: IntroducedMatc
         : {}),
       updatedAt: serverTimestamp(),
     });
+    changed = true;
   }
+  if (changed) invalidateReads();
 }
 
 export async function introduceMatch(match: {
@@ -998,13 +1075,17 @@ export async function introduceMatch(match: {
     { introduced: true, updatedAt: serverTimestamp() },
     { merge: true },
   );
-  if (match.joinExisting) return;
+  if (match.joinExisting) {
+    invalidateReads();
+    return;
+  }
   const introduction = `TRI AI has introduced you to ${match.mentorName}. The next step is a scoping meeting.`;
   await setDoc(
     doc(db, "proposals", match.proposalId),
     { introduction, updatedAt: serverTimestamp() },
     { merge: true },
   );
+  invalidateReads();
 }
 
 /** If a scoping project already exists and the Senior Researcher is interested, add them without admin introduce tasks. */
@@ -1025,6 +1106,7 @@ export async function joinScopingProjectIfInterested(input: {
   const participants = Array.isArray(project.participantIds) ? project.participantIds.map(String) : [];
   if (participants.includes(input.mentorId)) {
     await setDoc(doc(db, "matches", input.matchId), { introduced: true, updatedAt: serverTimestamp() }, { merge: true });
+    invalidateReads();
     return true;
   }
   await introduceMatch({

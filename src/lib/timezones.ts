@@ -1,5 +1,6 @@
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { firestore } from "./firebase";
+import { cachedRead, invalidateReads, reads } from "./readCache";
 
 export const PROGRAMME_ZONE = "Africa/Lagos";
 
@@ -135,20 +136,22 @@ export function formatZonedSpan(start: Date, end: Date, timeZone: string) {
   return `${startLabel} – ${endLabel} ${zoneClockName(timeZone, start)}`;
 }
 
-export async function loadTimezones(uids: string[]) {
-  const db = firestore();
+export function loadTimezones(uids: string[]) {
   const unique = [...new Set(uids.filter(Boolean))];
-  if (!db || unique.length === 0) {
-    return Object.fromEntries(unique.map((uid) => [uid, PROGRAMME_ZONE]));
-  }
-  const entries = await Promise.all(
-    unique.map(async (uid) => {
-      const snapshot = await getDoc(doc(db, "timezones", uid));
-      const zone = snapshot.exists() ? String(snapshot.data().timezone ?? "") : "";
-      return [uid, isKnownZone(zone) ? zone : PROGRAMME_ZONE] as const;
-    }),
-  );
-  return Object.fromEntries(entries);
+  return cachedRead(reads.timezones(unique), async () => {
+    const db = firestore();
+    if (!db || unique.length === 0) {
+      return Object.fromEntries(unique.map((uid) => [uid, PROGRAMME_ZONE]));
+    }
+    const entries = await Promise.all(
+      unique.map(async (uid) => {
+        const snapshot = await getDoc(doc(db, "timezones", uid));
+        const zone = snapshot.exists() ? String(snapshot.data().timezone ?? "") : "";
+        return [uid, isKnownZone(zone) ? zone : PROGRAMME_ZONE] as const;
+      }),
+    );
+    return Object.fromEntries(entries);
+  });
 }
 
 export async function saveTimezone(uid: string, timezone: string) {
@@ -156,4 +159,5 @@ export async function saveTimezone(uid: string, timezone: string) {
   if (!db) throw new Error("This is unavailable right now.");
   if (!isKnownZone(timezone)) throw new Error("Choose a time zone from the list.");
   await setDoc(doc(db, "timezones", uid), { timezone, updatedAt: serverTimestamp() });
+  invalidateReads();
 }

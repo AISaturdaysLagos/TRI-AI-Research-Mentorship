@@ -24,6 +24,8 @@ import {
 } from "../lib/records";
 import { MATCH_RESPONSES, projectTypeLabel, type MatchResponse } from "../types/domain";
 import { userFacingError } from "../lib/errors";
+import { prefetchParticipantWorkspace } from "../lib/prefetchWorkspace";
+import { peekRead, reads } from "../lib/readCache";
 import { SearchSelect } from "../components/SearchSelect";
 
 type Person = { uid?: string; name?: string };
@@ -118,6 +120,33 @@ function proposalMatchRequests(rows: Row[], projectIds: Set<string>, uid: string
     return (left.title || "").localeCompare(right.title || "");
   });
   return cards;
+}
+
+function warmParticipant(role: string, uid: string, email: string) {
+  const projects = peekRead<ProjectRow[]>(reads.participantProjects(uid));
+  const programme = peekRead<{ id?: string; proposalId?: string; status?: string; participantIds?: string[] }[]>(
+    reads.researchProjects,
+  );
+  const invites = peekRead<PendingInvite[]>(reads.pendingInvites(email, uid));
+  if (!projects || !programme || !invites) return undefined;
+  if (role === "researcher") {
+    const items = peekRead<MatchCard[]>(reads.researcherProposals(uid));
+    if (!items) return undefined;
+    const matched = projectProposalIds([...projects, ...programme]);
+    return {
+      rows: items.filter((row) => !matched.has(row.id)),
+      projects,
+      invites: invites.filter((invite) => (invite.role || "researcher") === "researcher"),
+    };
+  }
+  if (role !== "senior_researcher") return undefined;
+  const items = peekRead<Row[]>(reads.matches);
+  if (!items) return undefined;
+  return {
+    rows: proposalMatchRequests(items, settledMatchProposalIds([...projects, ...programme], uid), uid),
+    projects,
+    invites: invites.filter((invite) => invite.role === "senior_researcher"),
+  };
 }
 
 function ProjectList({
@@ -343,26 +372,31 @@ function MatchRequestCard({
 
 export function DashboardPage() {
   const { user, profile } = useAuth();
-  const [rows, setRows] = useState<MatchCard[]>([]);
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const role = profile?.role === "researcher" || profile?.role === "senior_researcher" ? profile.role : null;
+  if (user && role) prefetchParticipantWorkspace(role, user.uid, user.email || "");
+  const warm = user && role ? warmParticipant(role, user.uid, user.email || "") : undefined;
+  const [rows, setRows] = useState<MatchCard[]>(() => warm?.rows ?? []);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>(() => warm?.invites ?? []);
+  const [projects, setProjects] = useState<ProjectRow[]>(() => warm?.projects ?? []);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [responseMail, setResponseMail] = useState<ReturnType<typeof matchResponseEmail> | null>(null);
   const [mailFor, setMailFor] = useState("");
   const [error, setError] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
   const [params] = useSearchParams();
   const tab = params.get("tab") === "records" ? "records" : "projects";
   const [fitFilter, setFitFilter] = useState("all");
 
   useEffect(() => {
     if (!user || !profile) return;
+    if (profile.role !== "researcher" && profile.role !== "senior_researcher") return;
+    const invites = listPendingInvitesForEmail(user.email || "", user.uid).catch(() => []);
     if (profile.role === "researcher") {
       Promise.all([
         listResearcherProposals(user.uid),
         listParticipantProjects(user.uid),
         listResearchProjects(),
-        listPendingInvitesForEmail(user.email || "", user.uid),
+        invites,
       ])
         .then(([items, projectRows, programmeProjects, inviteRows]) => {
           const matched = projectProposalIds([
@@ -387,7 +421,7 @@ export function DashboardPage() {
         listMatches(),
         listParticipantProjects(user.uid),
         listResearchProjects(),
-        listPendingInvitesForEmail(user.email || "", user.uid),
+        invites,
       ])
         .then(async ([items, projectRows, programmeProjects, inviteRows]) => {
           setProjects(projectRows as ProjectRow[]);

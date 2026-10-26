@@ -20,7 +20,15 @@ Fill the four `VITE_FIREBASE_*` values in `.env` from the Firebase web app confi
 
 ## Local development
 
-Use three terminals.
+Start the emulators, load the demo accounts, and open the app in one step:
+
+```bash
+npm run dev:start
+```
+
+The app is usually at http://localhost:5173/#/login. The Emulator UI is at http://127.0.0.1:4000. Ctrl+C stops Vite and the emulators this command started. If both emulators are already running, the command reuses them and only reloads the fixture data. It points the dev server at the local emulator project `tri-ai-research-mentorship`. Missing `node_modules` triggers `npm install`. Empty Firebase web config falls back to public demo values, which the emulators accept.
+
+Or use three terminals.
 
 1. Start the emulators and leave the process running:
 
@@ -95,6 +103,7 @@ GitHub Actions runs `test:e2e:ci` on pull requests and pushes to `main`.
 
 | Command | Purpose |
 | --- | --- |
+| `npm run dev:start` | Emulators, fixture seed, and the Vite dev server |
 | `npm run dev` | Vite dev server, with local fixtures when `.env.development` is present |
 | `npm run emulators` | Firebase Auth and Firestore emulators |
 | `npm run seed:fixtures` | Create the local test accounts and sample records |

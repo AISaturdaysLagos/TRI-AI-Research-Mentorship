@@ -22,6 +22,7 @@ import {
 } from "../lib/tasks";
 import { formatZonedWhen, PROGRAMME_ZONE } from "../lib/timezones";
 import { listProjectActivities, type ProjectActivity } from "../lib/workspace";
+import { peekRead, reads } from "../lib/readCache";
 import { userFacingError } from "../lib/errors";
 import { SearchSelect } from "../components/SearchSelect";
 
@@ -181,18 +182,34 @@ function doneArea(task: ProgrammeTask) {
   return "Added by an admin";
 }
 
+type TaskRecords = {
+  proposals: { id: string; title?: string; status?: string; name?: string }[];
+  projects: { id: string; title?: string; status?: string; proposalId?: string; awardId?: string; scoped?: boolean; charterSigned?: boolean; researchers?: { name?: string }[]; seniorResearchers?: { name?: string }[] }[];
+  matches: { id: string; proposalId?: string; title?: string; mentorName?: string; response?: string; introduced?: boolean }[];
+  seniors: { id: string; name?: string; poolStatus?: string }[];
+  meetings: { kind?: string; status?: string; proposalId?: string; projectId?: string }[];
+  invites: { projectId?: string; role?: string; status?: string }[];
+  activities: ProjectActivity[];
+};
+
+function warmTaskRecords() {
+  const proposals = peekRead<TaskRecords["proposals"]>(reads.proposals);
+  const projects = peekRead<TaskRecords["projects"]>(reads.projects);
+  const matches = peekRead<TaskRecords["matches"]>(reads.matches);
+  const seniors = peekRead<TaskRecords["seniors"]>(reads.seniors);
+  const meetings = peekRead<TaskRecords["meetings"]>(reads.meetings);
+  const invites = peekRead<TaskRecords["invites"]>(reads.invites);
+  if (!proposals || !projects || !matches || !seniors || !meetings || !invites) return null;
+  const live = projects.filter((project) => ["scoping", "active", "internal_review"].includes(project.status || ""));
+  const activities = peekRead<ProjectActivity[]>(reads.activities(live.map((project) => project.id)));
+  if (!activities) return null;
+  return { proposals, projects, matches, seniors, meetings, invites, activities };
+}
+
 export function AdminTasksPage() {
   const { user, profile } = useAuth();
   const [tasks, setTasks] = useState<ProgrammeTask[]>([]);
-  const [records, setRecords] = useState<{
-    proposals: { id: string; title?: string; status?: string; name?: string }[];
-    projects: { id: string; title?: string; status?: string; proposalId?: string; awardId?: string; scoped?: boolean; charterSigned?: boolean; researchers?: { name?: string }[]; seniorResearchers?: { name?: string }[] }[];
-    matches: { id: string; proposalId?: string; title?: string; mentorName?: string; response?: string; introduced?: boolean }[];
-    seniors: { id: string; name?: string; poolStatus?: string }[];
-    meetings: { kind?: string; status?: string; proposalId?: string; projectId?: string }[];
-    invites: { projectId?: string; role?: string; status?: string }[];
-    activities: ProjectActivity[];
-  } | null>(null);
+  const [records, setRecords] = useState<TaskRecords | null>(() => warmTaskRecords());
   const [title, setTitle] = useState("");
   const [detail, setDetail] = useState("");
   const [statusFilter, setStatusFilter] = useState("open");

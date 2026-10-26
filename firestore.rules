@@ -407,9 +407,8 @@ service cloud.firestore {
     match /projectInvites/{token} {
       allow get: if true;
       allow list: if isAdmin()
-        || (signedIn()
-          && resource.data.guestEmail is string
-          && resource.data.guestEmail == request.auth.token.email.lower());
+        // Compare the address directly. lower() cannot be proven for this list query.
+        || (signedIn() && resource.data.guestEmail == request.auth.token.email);
       allow create: if isAdmin()
         && request.resource.data.keys().hasOnly([
           'projectId', 'projectTitle', 'role', 'status', 'awardId', 'acceptedIds',

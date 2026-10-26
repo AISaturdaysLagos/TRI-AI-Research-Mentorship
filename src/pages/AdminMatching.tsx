@@ -6,6 +6,7 @@ import { StatusChip } from "../components/StatusChip";
 import { useAuth } from "../lib/auth";
 import { introductionEmail, matchRequestEmail, named, type EmailDraft } from "../lib/email";
 import { introduceMatch, listDirectory, listMatches, listProjects, listProposals, listSeniorProfiles, sendMatchOpportunity } from "../lib/records";
+import { peekRead, reads } from "../lib/readCache";
 import { EMPTY_FIT, FIT_DIMENSIONS, type FitScores } from "../types/domain";
 import { userFacingError } from "../lib/errors";
 import { SearchSelect } from "../components/SearchSelect";
@@ -34,6 +35,28 @@ type MatchRow = {
 
 const readyStatuses = new Set(["approved_for_matching", "ready_for_matching", "matching"]);
 
+function readyProposals(proposalRows: ProposalRow[], projectRows: { proposalId?: string }[]) {
+  const projectProposalIds = new Set(
+    projectRows.map((project) => project.proposalId).filter((id): id is string => Boolean(id)),
+  );
+  return proposalRows.filter((item) => readyStatuses.has(String(item.status ?? "")) && !projectProposalIds.has(item.id));
+}
+
+function warmMatching() {
+  const proposalRows = peekRead<ProposalRow[]>(reads.proposals);
+  const projectRows = peekRead<{ proposalId?: string }[]>(reads.projects);
+  const mentorRows = peekRead<MentorRow[]>(reads.seniors);
+  const matchRows = peekRead<MatchRow[]>(reads.matches);
+  const directoryRows = peekRead<{ id: string; email: string; displayName: string }[]>(reads.directory);
+  if (!proposalRows || !projectRows || !mentorRows || !matchRows || !directoryRows) return undefined;
+  return {
+    proposals: readyProposals(proposalRows, projectRows),
+    mentors: mentorRows,
+    matches: matchRows,
+    directory: directoryRows,
+  };
+}
+
 function tokens(value: string) {
   return new Set(
     value
@@ -51,16 +74,17 @@ function overlap(left: Set<string>, right: Set<string>) {
 
 export function AdminMatchingPage() {
   const { profile } = useAuth();
-  const [proposals, setProposals] = useState<ProposalRow[]>([]);
-  const [mentors, setMentors] = useState<MentorRow[]>([]);
-  const [matches, setMatches] = useState<MatchRow[]>([]);
-  const [selectedId, setSelectedId] = useState("");
+  const warm = warmMatching();
+  const [proposals, setProposals] = useState<ProposalRow[]>(() => warm?.proposals ?? []);
+  const [mentors, setMentors] = useState<MentorRow[]>(() => warm?.mentors ?? []);
+  const [matches, setMatches] = useState<MatchRow[]>(() => warm?.matches ?? []);
+  const [selectedId, setSelectedId] = useState(() => warm?.proposals[0]?.id || "");
   const [mentorId, setMentorId] = useState("");
   const [fit, setFit] = useState<FitScores>(EMPTY_FIT);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
-  const [loaded, setLoaded] = useState(false);
-  const [directory, setDirectory] = useState<{ id: string; email: string; displayName: string }[]>([]);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
+  const [directory, setDirectory] = useState<{ id: string; email: string; displayName: string }[]>(() => warm?.directory ?? []);
   const [introductionDraft, setIntroductionDraft] = useState<EmailDraft | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,14 +93,7 @@ export function AdminMatchingPage() {
     if (profile?.role !== "admin") return;
     Promise.all([listProposals(), listProjects(), listSeniorProfiles(), listMatches(), listDirectory()])
       .then(([proposalRows, projectRows, mentorRows, matchRows, directoryRows]) => {
-        const projectProposalIds = new Set(
-          (projectRows as { proposalId?: string }[])
-            .map((project) => project.proposalId)
-            .filter((id): id is string => Boolean(id)),
-        );
-        const ready = (proposalRows as ProposalRow[]).filter(
-          (item) => readyStatuses.has(String(item.status ?? "")) && !projectProposalIds.has(item.id),
-        );
+        const ready = readyProposals(proposalRows as ProposalRow[], projectRows as { proposalId?: string }[]);
         setProposals(ready);
         setMentors(mentorRows as MentorRow[]);
         setDirectory(directoryRows);

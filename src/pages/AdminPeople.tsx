@@ -20,6 +20,7 @@ import {
   seniorDraftFromRecord,
   updateMentorPool,
 } from "../lib/records";
+import { peekRead, reads } from "../lib/readCache";
 import {
   EMPTY_RESEARCHER_PROFILE,
   EMPTY_SENIOR,
@@ -136,10 +137,77 @@ function DirectoryToolbar({
   );
 }
 
+function researcherRows(profiles: { id: string }[], directory: DirectoryPerson[]) {
+  const byId = new Map(profiles.map((item) => [item.id, item]));
+  const people = directory.filter((person) => person.role === "researcher");
+  const seen = new Set<string>();
+  const next: ResearcherRow[] = [];
+  for (const person of people) {
+    seen.add(person.id);
+    const profileRow = byId.get(person.id);
+    const fields = researcherDraftFromRecord(profileRow);
+    if (!fields.name) fields.name = person.displayName || "";
+    next.push({ id: person.id, email: person.email || "", ...fields });
+  }
+  for (const profileRow of profiles) {
+    if (seen.has(profileRow.id)) continue;
+    const fields = researcherDraftFromRecord(profileRow);
+    next.push({ id: profileRow.id, email: "", ...fields });
+  }
+  next.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: "base" }));
+  return next;
+}
+
+function warmResearchers() {
+  const profiles = peekRead<{ id: string }[]>(reads.researchers);
+  const directory = peekRead<DirectoryPerson[]>(reads.directory);
+  if (!profiles || !directory) return undefined;
+  return researcherRows(profiles, directory);
+}
+
+function seniorRows(profiles: (SeniorProfileDraft & { id: string; poolStatus?: string })[], directory: DirectoryPerson[]) {
+  const byId = new Map(profiles.map((item) => [item.id, item]));
+  const people = directory.filter((person) => person.role === "senior_researcher");
+  const seen = new Set<string>();
+  const next: SeniorRow[] = [];
+  for (const person of people) {
+    seen.add(person.id);
+    const profileRow = byId.get(person.id);
+    const fields = seniorDraftFromRecord(profileRow);
+    if (!fields.name) fields.name = person.displayName || "";
+    next.push({
+      id: person.id,
+      email: person.email || "",
+      ...fields,
+      poolStatus: profileRow?.poolStatus === "in_pool" ? "in_pool" : "pending",
+    });
+  }
+  for (const profileRow of profiles) {
+    if (seen.has(profileRow.id)) continue;
+    const fields = seniorDraftFromRecord(profileRow);
+    next.push({
+      id: profileRow.id,
+      email: "",
+      ...fields,
+      poolStatus: profileRow.poolStatus === "in_pool" ? "in_pool" : "pending",
+    });
+  }
+  next.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: "base" }));
+  return next;
+}
+
+function warmSeniors() {
+  const profiles = peekRead<(SeniorProfileDraft & { id: string; poolStatus?: string })[]>(reads.seniors);
+  const directory = peekRead<DirectoryPerson[]>(reads.directory);
+  if (!profiles || !directory) return undefined;
+  return seniorRows(profiles, directory);
+}
+
 export function AdminResearchersPage() {
   const { user, profile } = useAuth();
-  const [rows, setRows] = useState<ResearcherRow[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const warm = warmResearchers();
+  const [rows, setRows] = useState<ResearcherRow[]>(() => warm ?? []);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
@@ -153,24 +221,7 @@ export function AdminResearchersPage() {
     if (profile?.role !== "admin") return;
     Promise.all([listResearcherProfiles(), listDirectory()])
       .then(([profiles, directory]) => {
-        const byId = new Map((profiles as { id: string }[]).map((item) => [item.id, item]));
-        const people = (directory as DirectoryPerson[]).filter((person) => person.role === "researcher");
-        const seen = new Set<string>();
-        const next: ResearcherRow[] = [];
-        for (const person of people) {
-          seen.add(person.id);
-          const profileRow = byId.get(person.id);
-          const fields = researcherDraftFromRecord(profileRow);
-          if (!fields.name) fields.name = person.displayName || "";
-          next.push({ id: person.id, email: person.email || "", ...fields });
-        }
-        for (const profileRow of profiles as { id: string }[]) {
-          if (seen.has(profileRow.id)) continue;
-          const fields = researcherDraftFromRecord(profileRow);
-          next.push({ id: profileRow.id, email: "", ...fields });
-        }
-        next.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: "base" }));
-        setRows(next);
+        setRows(researcherRows(profiles as { id: string }[], directory as DirectoryPerson[]));
       })
       .catch((err: unknown) => setError(userFacingError(err, "Could not load Researchers.")))
       .finally(() => setLoaded(true));
@@ -398,8 +449,9 @@ export function AdminResearchersPage() {
 
 export function AdminMentorsPage() {
   const { user, profile } = useAuth();
-  const [rows, setRows] = useState<SeniorRow[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const warm = warmSeniors();
+  const [rows, setRows] = useState<SeniorRow[]>(() => warm ?? []);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
@@ -415,34 +467,12 @@ export function AdminMentorsPage() {
     if (profile?.role !== "admin") return;
     Promise.all([listSeniorProfiles(), listDirectory()])
       .then(([profiles, directory]) => {
-        const byId = new Map((profiles as { id: string }[]).map((item) => [item.id, item]));
-        const people = (directory as DirectoryPerson[]).filter((person) => person.role === "senior_researcher");
-        const seen = new Set<string>();
-        const next: SeniorRow[] = [];
-        for (const person of people) {
-          seen.add(person.id);
-          const profileRow = byId.get(person.id) as (SeniorProfileDraft & { poolStatus?: string }) | undefined;
-          const fields = seniorDraftFromRecord(profileRow);
-          if (!fields.name) fields.name = person.displayName || "";
-          next.push({
-            id: person.id,
-            email: person.email || "",
-            ...fields,
-            poolStatus: profileRow?.poolStatus === "in_pool" ? "in_pool" : "pending",
-          });
-        }
-        for (const profileRow of profiles as (SeniorProfileDraft & { id: string; poolStatus?: string })[]) {
-          if (seen.has(profileRow.id)) continue;
-          const fields = seniorDraftFromRecord(profileRow);
-          next.push({
-            id: profileRow.id,
-            email: "",
-            ...fields,
-            poolStatus: profileRow.poolStatus === "in_pool" ? "in_pool" : "pending",
-          });
-        }
-        next.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: "base" }));
-        setRows(next);
+        setRows(
+          seniorRows(
+            profiles as (SeniorProfileDraft & { id: string; poolStatus?: string })[],
+            directory as DirectoryPerson[],
+          ),
+        );
       })
       .catch((err: unknown) => setError(userFacingError(err, "Could not load the Senior Researcher pool.")))
       .finally(() => setLoaded(true));

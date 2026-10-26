@@ -31,10 +31,10 @@ import { userFacingError } from "../lib/errors";
 async function currentNotices(uid: string, role: string): Promise<AttentionNotice[]> {
   if (role === "researcher") {
     const [proposals, projects, programmeProjects, meetings] = await Promise.all([
-      listResearcherProposals(uid),
-      listParticipantProjects(uid),
-      listResearchProjects(),
-      listParticipantMeetings(uid),
+      listResearcherProposals(uid, { fresh: true }),
+      listParticipantProjects(uid, { fresh: true }),
+      listResearchProjects({ fresh: true }),
+      listParticipantMeetings(uid, { fresh: true }),
     ]);
     const matched = projectProposalIds([
       ...(projects as { id?: string; proposalId?: string }[]),
@@ -45,10 +45,10 @@ async function currentNotices(uid: string, role: string): Promise<AttentionNotic
   }
   if (role === "senior_researcher") {
     const [matches, projects, programmeProjects, meetings] = await Promise.all([
-      listMatches(),
-      listParticipantProjects(uid),
-      listResearchProjects(),
-      listParticipantMeetings(uid),
+      listMatches({ fresh: true }),
+      listParticipantProjects(uid, { fresh: true }),
+      listResearchProjects({ fresh: true }),
+      listParticipantMeetings(uid, { fresh: true }),
     ]);
     const settled = settledMatchProposalIds(
       [
@@ -65,14 +65,14 @@ async function currentNotices(uid: string, role: string): Promise<AttentionNotic
   }
   if (role === "admin") {
     const [proposals, matches, seniors] = await Promise.all([
-      listProposals(),
-      listMatches(),
-      listSeniorProfiles(),
+      listProposals({ fresh: true }),
+      listMatches({ fresh: true }),
+      listSeniorProfiles({ fresh: true }),
     ]);
     return adminNotices(proposals, matches, seniors);
   }
   if (role === "reviewer") {
-    const [reviews, proposals] = await Promise.all([listAssignedReviews(uid), listProposals()]);
+    const [reviews, proposals] = await Promise.all([listAssignedReviews(uid), listProposals({ fresh: true })]);
     return reviewerNotices(reviews, proposals);
   }
   return [];

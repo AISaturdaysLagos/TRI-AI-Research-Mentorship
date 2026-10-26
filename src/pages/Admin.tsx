@@ -5,7 +5,9 @@ import { Icon, type IconName } from "../components/Icon";
 import { Loader } from "../components/Loader";
 import { StatusChip } from "../components/StatusChip";
 import { useAuth } from "../lib/auth";
+import { prefetchAdminWorkspace, prefetchReviewerWorkspace } from "../lib/prefetchWorkspace";
 import { listProjects, listProposals } from "../lib/records";
+import { peekRead, reads } from "../lib/readCache";
 import { userFacingError } from "../lib/errors";
 import { SearchSelect } from "../components/SearchSelect";
 
@@ -23,11 +25,13 @@ const links: { to: string; label: string; icon: IconName; adminOnly?: boolean }[
 ];
 
 export function AdminLayout() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   if (!profile) return null;
   if (profile.role !== "admin" && profile.role !== "reviewer") {
     return <Navigate to="/dashboard" replace />;
   }
+  if (profile.role === "admin" && user) prefetchAdminWorkspace(user.uid);
+  if (profile.role === "reviewer") prefetchReviewerWorkspace();
   return (
     <article>
       <header className="page-intro work">
@@ -73,22 +77,32 @@ type ProposalRow = {
   route?: string;
 };
 
+function proposalRows(items: ProposalRow[], projects: { proposalId?: string }[]) {
+  const projectProposalIds = new Set(
+    projects.map((project) => project.proposalId).filter((id): id is string => Boolean(id)),
+  );
+  return items.filter((row) => !projectProposalIds.has(row.id));
+}
+
+function warmProposals() {
+  const items = peekRead<ProposalRow[]>(reads.proposals);
+  const projects = peekRead<{ proposalId?: string }[]>(reads.projects);
+  if (!items || !projects) return undefined;
+  return proposalRows(items, projects);
+}
+
 export function AdminProposalsPage() {
-  const [rows, setRows] = useState<ProposalRow[]>([]);
+  const warm = warmProposals();
+  const [rows, setRows] = useState<ProposalRow[]>(() => warm ?? []);
   const [error, setError] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
   const [route, setRoute] = useState("all");
   const [status, setStatus] = useState("all");
 
   useEffect(() => {
     Promise.all([listProposals(), listProjects()])
       .then(([items, projects]) => {
-        const projectProposalIds = new Set(
-          (projects as { proposalId?: string }[])
-            .map((project) => project.proposalId)
-            .filter((id): id is string => Boolean(id)),
-        );
-        setRows((items as ProposalRow[]).filter((row) => !projectProposalIds.has(row.id)));
+        setRows(proposalRows(items as ProposalRow[], projects as { proposalId?: string }[]));
       })
       .catch((err: unknown) => setError(userFacingError(err, "Could not load proposals.")))
       .finally(() => setLoaded(true));

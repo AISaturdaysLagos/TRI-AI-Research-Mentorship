@@ -1,6 +1,6 @@
-import { initializeApp, type FirebaseApp } from "firebase/app";
-import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
-import { connectFirestoreEmulator, getFirestore, type Firestore } from "firebase/firestore";
+import type { FirebaseApp } from "firebase/app";
+import type { Auth } from "firebase/auth";
+import type { Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -16,16 +16,25 @@ export const firebaseConfigured = Boolean(
     firebaseConfig.appId,
 );
 
-let app: FirebaseApp | null = null;
-let emulatorsReady = false;
-
 export const fixturesEnabled = import.meta.env.VITE_ENABLE_FIXTURES === "true";
 const emulatorsEnabled = import.meta.env.VITE_USE_EMULATORS === "true";
 
-export function firebaseApp(): FirebaseApp | null {
-  if (!firebaseConfigured) return null;
-  if (!app) app = initializeApp(firebaseConfig);
-  return app;
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+let loaded = false;
+let loading: Promise<void> | null = null;
+
+export function firebaseLoaded() {
+  return loaded;
+}
+
+export function firebaseAuth(): Auth | null {
+  return auth;
+}
+
+export function firestore(): Firestore | null {
+  return db;
 }
 
 function emulatorHost() {
@@ -35,8 +44,49 @@ function emulatorHost() {
   return "127.0.0.1";
 }
 
-function useLocalEmulators(auth: Auth, db: Firestore) {
-  if (!emulatorsEnabled || emulatorsReady) return;
+// The Firebase SDK is a separate download so public pages can render first.
+export function loadFirebase() {
+  if (!firebaseConfigured) {
+    loaded = true;
+    return Promise.resolve();
+  }
+  if (!loading) {
+    loading = boot()
+      .catch((error: unknown) => {
+        console.error(error);
+      })
+      .finally(() => {
+        loaded = true;
+      });
+  }
+  return loading;
+}
+
+async function boot() {
+  const { getApp, getApps, initializeApp } = await import("firebase/app");
+  const { connectAuthEmulator, getAuth } = await import("firebase/auth");
+  const {
+    connectFirestoreEmulator,
+    getFirestore,
+    initializeFirestore,
+    memoryLocalCache,
+    persistentLocalCache,
+    persistentMultipleTabManager,
+  } = await import("firebase/firestore");
+
+  app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  try {
+    db = initializeFirestore(app, {
+      localCache: emulatorsEnabled
+        ? memoryLocalCache()
+        : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    db = getFirestore(app);
+  }
+
+  if (!emulatorsEnabled) return;
   const host = emulatorHost();
   try {
     connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
@@ -44,21 +94,4 @@ function useLocalEmulators(auth: Auth, db: Firestore) {
   } catch {
     // The emulators are already connected after a hot reload.
   }
-  emulatorsReady = true;
-}
-
-export function firebaseAuth(): Auth | null {
-  const instance = firebaseApp();
-  if (!instance) return null;
-  const auth = getAuth(instance);
-  useLocalEmulators(auth, getFirestore(instance));
-  return auth;
-}
-
-export function firestore(): Firestore | null {
-  const instance = firebaseApp();
-  if (!instance) return null;
-  const db = getFirestore(instance);
-  useLocalEmulators(getAuth(instance), db);
-  return db;
 }

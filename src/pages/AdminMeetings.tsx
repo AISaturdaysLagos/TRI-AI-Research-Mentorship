@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
 import { EmailSupport } from "../components/EmailSupport";
 import { Loader } from "../components/Loader";
 import { MeetingClocks, MeetingTimePicker, TimezoneField, type TimeChoice } from "../components/MeetingTimePicker";
@@ -9,7 +8,6 @@ import { MeetingSchedule } from "../components/MeetingSchedule";
 import { useAuth } from "../lib/auth";
 import { calendarTemplateLink, createGoogleCalendarEvent, nextSaturdayAtFourWat, watDateAndTime } from "../lib/calendar";
 import { PROGRAMME_ZONE, formatNoteClocks, loadTimezones, saveTimezone, zonedWallTime } from "../lib/timezones";
-import { firestore } from "../lib/firebase";
 import {
   cancelMeeting,
   formatMeetingWhen,
@@ -29,7 +27,8 @@ import {
   type MeetingReply,
   type MeetingRow,
 } from "../lib/meetings";
-import { listMatches, listProjects, listProposals } from "../lib/records";
+import { listDirectory, listMatches, listProjects, listProposals } from "../lib/records";
+import { peekRead, reads } from "../lib/readCache";
 import { userFacingError } from "../lib/errors";
 import { CloseButton } from "../components/CloseButton";
 import { SearchSelect } from "../components/SearchSelect";
@@ -216,8 +215,45 @@ function AdminMeetingCard({
   );
 }
 
+function directoryPeople(rows: { id: string; email: string; displayName: string; role: string }[]) {
+  return rows.map((person) => ({
+    uid: person.id,
+    name: person.displayName,
+    email: person.email,
+    role: person.role,
+  }));
+}
+
+function warmAdminMeetings(uid: string) {
+  const proposals = peekRead<ProposalOption[]>(reads.proposals);
+  const matches = peekRead<MatchOption[]>(reads.matches);
+  const projects = peekRead<ProjectOption[]>(reads.projects);
+  const meetingRows = peekRead<MeetingRow[]>(reads.meetings);
+  const directoryRows = peekRead<{ id: string; email: string; displayName: string; role: string }[]>(reads.directory);
+  if (!proposals || !matches || !projects || !meetingRows || !directoryRows) return undefined;
+  const replies: Record<string, MeetingReply[]> = {};
+  for (const meeting of meetingRows) {
+    const rows = peekRead<MeetingReply[]>(reads.meetingReplies(meeting.id));
+    if (!rows) return undefined;
+    replies[meeting.id] = rows;
+  }
+  const participantIds = meetingRows.flatMap((meeting) => meetingAttendees(meeting).map((person) => person.uid));
+  const zones = peekRead<Record<string, string>>(reads.timezones([uid, ...participantIds]));
+  if (!zones) return undefined;
+  return {
+    proposals,
+    matches,
+    projects,
+    meetings: meetingRows,
+    directory: directoryPeople(directoryRows),
+    replies,
+    zones,
+  };
+}
+
 export function AdminMeetingsPage() {
   const { user, profile } = useAuth();
+  const warm = user ? warmAdminMeetings(user.uid) : undefined;
   const [kind, setKind] = useState<MeetingKind>("scoping");
   const [recordId, setRecordId] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -228,30 +264,29 @@ export function AdminMeetingsPage() {
     end: opening.end,
     zone: PROGRAMME_ZONE,
   });
-  const [zones, setZones] = useState<Record<string, string>>({});
+  const [zones, setZones] = useState<Record<string, string>>(() => warm?.zones ?? {});
   const [note, setNote] = useState("");
-  const [proposals, setProposals] = useState<ProposalOption[]>([]);
-  const [matches, setMatches] = useState<MatchOption[]>([]);
-  const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [directory, setDirectory] = useState<DirectoryPerson[]>([]);
-  const [meetings, setMeetings] = useState<MeetingRow[]>([]);
-  const [replies, setReplies] = useState<Record<string, MeetingReply[]>>({});
+  const [proposals, setProposals] = useState<ProposalOption[]>(() => warm?.proposals ?? []);
+  const [matches, setMatches] = useState<MatchOption[]>(() => warm?.matches ?? []);
+  const [projects, setProjects] = useState<ProjectOption[]>(() => warm?.projects ?? []);
+  const [directory, setDirectory] = useState<DirectoryPerson[]>(() => warm?.directory ?? []);
+  const [meetings, setMeetings] = useState<MeetingRow[]>(() => warm?.meetings ?? []);
+  const [replies, setReplies] = useState<Record<string, MeetingReply[]>>(() => warm?.replies ?? {});
   const [message, setMessage] = useState("");
   const [mail, setMail] = useState<EmailDraft | null>(null);
   const [error, setError] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
   const [busy, setBusy] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [creating, setCreating] = useState(false);
 
   async function reload() {
-    const db = firestore();
-    const [proposalRows, matchRows, projectRows, meetingRows, directoryDocs] = await Promise.all([
+    const [proposalRows, matchRows, projectRows, meetingRows, directoryRows] = await Promise.all([
       listProposals(),
       listMatches(),
       listProjects(),
       listMeetings(),
-      db ? getDocs(collection(db, "users")) : Promise.resolve(null),
+      listDirectory(),
     ]);
     setProposals(proposalRows as ProposalOption[]);
     setMatches(matchRows as MatchOption[]);
@@ -259,16 +294,7 @@ export function AdminMeetingsPage() {
     setMeetings(meetingRows);
     const participantIds = meetingRows.flatMap((meeting) => meetingAttendees(meeting).map((person) => person.uid));
     if (user) setZones(await loadTimezones([user.uid, ...participantIds]));
-    setDirectory(
-      directoryDocs
-        ? directoryDocs.docs.map((item) => ({
-            uid: item.id,
-            name: String(item.data().displayName ?? ""),
-            email: String(item.data().email ?? ""),
-            role: String(item.data().role ?? ""),
-          }))
-        : [],
-    );
+    setDirectory(directoryPeople(directoryRows));
     const replyEntries = await Promise.all(
       meetingRows.map(async (meeting) => [meeting.id, await listMeetingReplies(meeting.id)] as const),
     );

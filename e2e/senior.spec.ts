@@ -18,6 +18,7 @@ test.describe("Senior · Kwame", () => {
 
     await go(page, "/dashboard?tab=records");
     await expect(page.getByRole("heading", { name: "Match requests" })).toBeVisible();
+    await expect(page.getByText("You do not have access to do that.")).toHaveCount(0);
 
     await go(page, "/dashboard/projects/fixture-hausa-pilot?panel=resources");
     await page.getByRole("button", { name: "Resources" }).click();

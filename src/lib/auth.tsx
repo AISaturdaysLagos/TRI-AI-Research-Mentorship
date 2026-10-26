@@ -1,14 +1,4 @@
-import {
-  GoogleAuthProvider,
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updateProfile,
-  type User,
-} from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import type { User } from "firebase/auth";
 import {
   createContext,
   useContext,
@@ -18,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Role, SelfServeRole, UserRecord } from "../types/domain";
-import { firebaseAuth, firebaseConfigured, firestore } from "./firebase";
+import { firebaseAuth, firebaseConfigured, firestore, loadFirebase } from "./firebase";
 
 type AuthState = {
   ready: boolean;
@@ -35,39 +25,65 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+async function authClient() {
+  await loadFirebase();
+  const auth = firebaseAuth();
+  if (!auth) throw new Error("This is unavailable right now.");
+  return auth;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(!firebaseConfigured);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserRecord | null>(null);
 
   useEffect(() => {
-    const auth = firebaseAuth();
-    if (!auth) return;
-    return onAuthStateChanged(auth, async (next) => {
-      setUser(next);
-      if (!next) {
-        setProfile(null);
-        setReady(true);
-        return;
-      }
-      const db = firestore();
-      if (!db) {
-        setReady(true);
-        return;
-      }
-      const snapshot = await getDoc(doc(db, "users", next.uid));
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setProfile({
-          email: String(data.email ?? next.email ?? ""),
-          displayName: String(data.displayName ?? next.displayName ?? ""),
-          role: data.role as Role,
+    if (!firebaseConfigured) return;
+    let unsubscribe = () => {};
+    let cancel = false;
+    loadFirebase()
+      .then(async () => {
+        if (cancel) return;
+        const { onAuthStateChanged } = await import("firebase/auth");
+        const auth = firebaseAuth();
+        if (!auth) {
+          setReady(true);
+          return;
+        }
+        unsubscribe = onAuthStateChanged(auth, async (next) => {
+          setUser(next);
+          if (!next) {
+            setProfile(null);
+            setReady(true);
+            return;
+          }
+          const db = firestore();
+          if (!db) {
+            setReady(true);
+            return;
+          }
+          const { doc, getDoc } = await import("firebase/firestore");
+          const snapshot = await getDoc(doc(db, "users", next.uid));
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            setProfile({
+              email: String(data.email ?? next.email ?? ""),
+              displayName: String(data.displayName ?? next.displayName ?? ""),
+              role: data.role as Role,
+            });
+          } else {
+            setProfile(null);
+          }
+          setReady(true);
         });
-      } else {
-        setProfile(null);
-      }
-      setReady(true);
-    });
+      })
+      .catch(() => {
+        if (!cancel) setReady(true);
+      });
+    return () => {
+      cancel = true;
+      unsubscribe();
+    };
   }, []);
 
   const value = useMemo<AuthState>(
@@ -77,25 +93,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       profile,
       async signInWithGoogle() {
-        const auth = firebaseAuth();
-        if (!auth) throw new Error("This is unavailable right now.");
+        const auth = await authClient();
+        const { GoogleAuthProvider, signInWithPopup } = await import("firebase/auth");
         await signInWithPopup(auth, new GoogleAuthProvider());
       },
       async signInWithPassword(email, password) {
-        const auth = firebaseAuth();
-        if (!auth) throw new Error("This is unavailable right now.");
+        const auth = await authClient();
+        const { signInWithEmailAndPassword } = await import("firebase/auth");
         await signInWithEmailAndPassword(auth, email, password);
       },
       async registerWithPassword(email, password) {
-        const auth = firebaseAuth();
-        if (!auth) throw new Error("This is unavailable right now.");
+        const auth = await authClient();
+        const { createUserWithEmailAndPassword } = await import("firebase/auth");
         await createUserWithEmailAndPassword(auth, email, password);
       },
       async chooseRole(role, displayName) {
-        const auth = firebaseAuth();
+        const auth = await authClient();
         const db = firestore();
-        const current = auth?.currentUser;
-        if (!auth || !db || !current) throw new Error("Sign in before choosing a role.");
+        const current = auth.currentUser;
+        if (!db || !current) throw new Error("Sign in before choosing a role.");
+        const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
         await setDoc(doc(db, "users", current.uid), {
           email: current.email ?? "",
           displayName: displayName || current.displayName || "",
@@ -110,11 +127,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       },
       async updateDisplayName(displayName) {
-        const auth = firebaseAuth();
+        const auth = await authClient();
         const db = firestore();
-        const current = auth?.currentUser;
-        if (!auth || !db || !current || !profile) throw new Error("Sign in before updating your account.");
+        const current = auth.currentUser;
+        if (!db || !current || !profile) throw new Error("Sign in before updating your account.");
         const name = displayName.trim();
+        const { updateProfile } = await import("firebase/auth");
+        const { doc, serverTimestamp, setDoc } = await import("firebase/firestore");
         await updateProfile(current, { displayName: name });
         await setDoc(
           doc(db, "users", current.uid),
@@ -126,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async logout() {
         const auth = firebaseAuth();
         if (!auth) return;
+        const { signOut } = await import("firebase/auth");
         await signOut(auth);
       },
     }),

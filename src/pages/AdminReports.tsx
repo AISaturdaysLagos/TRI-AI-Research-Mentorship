@@ -5,6 +5,7 @@ import { HealthMark } from "../components/StatusChip";
 import { Loader } from "../components/Loader";
 import { useAuth } from "../lib/auth";
 import { listProjects, listProposals } from "../lib/records";
+import { peekRead, reads } from "../lib/readCache";
 import { userFacingError } from "../lib/errors";
 import { SearchSelect } from "../components/SearchSelect";
 import { projectTypeLabel } from "../types/domain";
@@ -40,12 +41,20 @@ function downloadCsv(filename: string, rows: string[][]) {
   URL.revokeObjectURL(url);
 }
 
+function warmReports() {
+  const proposals = peekRead<ProposalRow[]>(reads.proposals);
+  const projects = peekRead<ProjectRow[]>(reads.projects);
+  if (!proposals || !projects) return undefined;
+  return { proposals, projects };
+}
+
 export function AdminReportsPage() {
   const { profile } = useAuth();
-  const [proposals, setProposals] = useState<ProposalRow[]>([]);
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const warm = warmReports();
+  const [proposals, setProposals] = useState<ProposalRow[]>(() => warm?.proposals ?? []);
+  const [projects, setProjects] = useState<ProjectRow[]>(() => warm?.projects ?? []);
   const [route, setRoute] = useState("all");
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(() => warm !== undefined);
   const [error, setError] = useState("");
 
   useEffect(() => {
