@@ -314,9 +314,19 @@ export function AdminMeetingsPage() {
   const matchedProposalIds = new Set(
     matches.filter((item) => item.introduced && item.mentorId && item.proposalId).map((item) => item.proposalId),
   );
-  const scopingProposals = proposals.filter((item) => matchedProposalIds.has(item.id));
-  const awardScopingProjects = projects.filter((item) => item.status === "scoping" && Boolean(item.awardId));
   const activeProjects = projects.filter((item) => item.status === "active");
+  const awardScopingProjects = projects.filter(
+    (item) => item.status === "scoping" && Boolean(item.awardId) && !scopingTaken(item.id),
+  );
+  const awardProposalIds = new Set(
+    awardScopingProjects.map((item) => item.proposalId).filter((id): id is string => Boolean(id)),
+  );
+  const scopingProposals = proposals.filter((item) => {
+    if (!matchedProposalIds.has(item.id) || awardProposalIds.has(item.id) || scopingTaken(item.id)) return false;
+    const project = projects.find((row) => row.proposalId === item.id);
+    if (!project) return true;
+    return project.status === "scoping" && !scopingTaken(project.id);
+  });
   const isAwardScoping =
     kind === "scoping" && projects.some((item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId));
   const options = kind === "scoping" ? [...scopingProposals, ...awardScopingProjects] : activeProjects;

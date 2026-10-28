@@ -393,8 +393,8 @@ function ResearcherMeetingForm({
         }
         for (const project of participantProjects) {
           if (!project.proposalId || !introducedIds.has(project.proposalId)) continue;
+          if (project.status !== "scoping") continue;
           const current = byProposal.get(project.proposalId);
-          if (!current && project.status === "active") continue;
           const fromMatches = mentorMatches
             .filter((match) => match.proposalId === project.proposalId)
             .flatMap(researcherIdsFor);
@@ -409,7 +409,7 @@ function ResearcherMeetingForm({
             claimProjectId: project.id,
           });
         }
-        setProposals([...byProposal.values()].filter((item) => item.claimProjectId));
+        setProposals([...byProposal.values()]);
         setProjects(participantProjects);
         setMatches(mentorMatches);
       })
@@ -418,7 +418,11 @@ function ResearcherMeetingForm({
       });
   }, [uid]);
 
-  const scopingProposals = proposals.filter((item) => item.introduction === "introduced");
+  const scopingProposals = proposals.filter((item) => {
+    if (item.introduction !== "introduced" || takenScoping.has(item.id)) return false;
+    const project = projects.find((row) => row.proposalId === item.id);
+    return !project || project.status === "scoping";
+  });
   const activeProjects = projects.filter((item) => item.status === "active");
   const options = kind === "scoping" ? scopingProposals : activeProjects;
 
@@ -669,14 +673,12 @@ function ResearcherMeetingForm({
         options={[
           { value: "", label: "Select" },
           ...options.map((item) => {
-            const taken = kind === "scoping" && takenScoping.has(item.id);
             const type =
               kind === "project" && "awardId" in item ? projectTypeLabel(item as ProjectChoice) : undefined;
             return {
               value: item.id,
               label: item.title || "Untitled",
-              detail: taken ? "Scoping meeting already set" : type,
-              disabled: taken,
+              detail: type,
             };
           }),
         ]}

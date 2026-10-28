@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Icon, Mark, type IconName } from "../components/Icon";
 import { ProjectBoard } from "../components/ProjectBoard";
@@ -17,6 +17,8 @@ import {
   progressBlocks,
   resourceBlocks,
   scopingNotesBlocks,
+  pullCharterFromDrive,
+  pullOverviewFromDrive,
   syncCharterToDrive,
   syncCharterWithDrive,
   updateFiledDocument,
@@ -130,6 +132,35 @@ export function ProjectWorkspacePage() {
     user && (admin || (project?.participantIds ?? []).includes(user.uid)),
   );
 
+  async function applyDriveEdits(source: WorkspaceProject, currentCharter: CharterRecord, uid: string) {
+    const [charterPull, overviewPull] = await Promise.all([
+      pullCharterFromDrive({ projectId: source.id, charter: currentCharter }),
+      pullOverviewFromDrive(source.id),
+    ]);
+    if (charterPull.pulled) {
+      setCharter(charterPull.charter);
+      if (uid) await saveCharter(source.id, charterPull.charter, uid).catch(() => undefined);
+    }
+    if (!overviewPull) return;
+    const question = overviewPull.question || source.question || "";
+    const contribution = overviewPull.contribution || source.contribution || "";
+    const year = overviewPull.year || source.year || "";
+    if (question === (source.question || "") && contribution === (source.contribution || "") && year === (source.year || "")) {
+      return;
+    }
+    setProject((current) => (current ? { ...current, question, contribution, year } : current));
+    setOverview((current) => ({ ...current, question, contribution, year }));
+    if (!uid || profile?.role !== "admin") return;
+    await saveProjectOverview(source.id, {
+      question,
+      contribution,
+      year,
+      health: source.health || "green",
+      status: source.status || "scoping",
+      publicShowcase: Boolean(source.publicShowcase),
+    }).catch(() => undefined);
+  }
+
   async function reload() {
     const nextProject = await getWorkspaceProject(id);
     if (!nextProject) {
@@ -216,26 +247,29 @@ export function ProjectWorkspacePage() {
       if (drive && drive.id && drive.id !== nextProject.driveFolderId) {
         await saveProjectDrive(id, drive);
       }
-      // Quietly keep the Project Charter Google Doc aligned when a Google token is already available.
-      const synced = await syncCharterWithDrive({
-        projectId: id,
-        projectTitle: nextProject.title || "Project",
-        charter: nextCharter,
-        signed: Boolean(nextProject.charterSigned),
-        interactive: false,
-      });
-      if (synced.pulled) {
-        setCharter(synced.charter);
-        if (user) await saveCharter(id, synced.charter, user.uid);
-      }
+      await applyDriveEdits(nextProject, nextCharter, user?.uid || "");
     }).catch((err: unknown) => setError(userFacingError(err, "Could not create the Google Drive folder.")));
   }
+
+  const driveSync = useRef({ project, charter, uid: user?.uid || "", apply: applyDriveEdits });
+  driveSync.current = { project, charter, uid: user?.uid || "", apply: applyDriveEdits };
 
   useEffect(() => {
     if (!id || !user || !profile) return;
     setNotice("");
     void reload().catch((err: unknown) => setError(userFacingError(err, "Could not load this project.")));
   }, [id, user, profile]);
+
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible") return;
+      const current = driveSync.current;
+      if (!current.project || !current.uid) return;
+      void current.apply(current.project, current.charter, current.uid);
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   async function run(key: string, action: () => Promise<void>, done: string, sync?: () => Promise<"updated" | "skipped">) {
     setError("");

@@ -116,9 +116,15 @@ export function parseCharterMarkdown(markdown: string): CharterRecord {
   let key: keyof CharterRecord | null = null;
   const buckets: Partial<Record<keyof CharterRecord, string[]>> = {};
   for (const raw of lines) {
-    const heading = /^##\s+(.+)$/.exec(raw.trim());
-    if (heading) {
-      key = CHARTER_HEADING_ALIASES[heading[1].trim().toLowerCase()] ?? null;
+    const trimmedLine = raw.trim();
+    const markdownHeading = /^#{1,3}\s+(.+)$/.exec(trimmedLine);
+    if (markdownHeading) {
+      key = CHARTER_HEADING_ALIASES[markdownHeading[1].trim().toLowerCase()] ?? null;
+      continue;
+    }
+    const bareHeading = CHARTER_HEADING_ALIASES[trimmedLine.toLowerCase()];
+    if (bareHeading) {
+      key = bareHeading;
       continue;
     }
     if (!key) continue;
@@ -563,7 +569,45 @@ async function readLocalDocument(fileId: string) {
   return typeof body.markdown === "string" ? body.markdown : null;
 }
 
+type GoogleDocBody = {
+  body?: {
+    content?: {
+      paragraph?: {
+        paragraphStyle?: { namedStyleType?: string };
+        elements?: { textRun?: { content?: string } }[];
+      };
+    }[];
+  };
+};
+
+/** Turn Docs heading styles into the markdown the charter parser already understands. */
+export function googleDocToMarkdown(doc: GoogleDocBody) {
+  const lines: string[] = [];
+  for (const block of doc.body?.content ?? []) {
+    const paragraph = block.paragraph;
+    if (!paragraph) continue;
+    const text = (paragraph.elements ?? [])
+      .map((item) => item.textRun?.content ?? "")
+      .join("")
+      .replace(/\n+$/g, "")
+      .trim();
+    if (!text) continue;
+    const style = paragraph.paragraphStyle?.namedStyleType ?? "";
+    if (style === "TITLE" || style === "HEADING_1") lines.push(`# ${text}`);
+    else if (style.startsWith("HEADING_")) lines.push(`## ${text}`);
+    else lines.push(text);
+  }
+  return lines.join("\n");
+}
+
 async function readGoogleDocMarkdown(token: string, fileId: string) {
+  const structured = await fetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (structured.ok) {
+    const markdown = googleDocToMarkdown((await structured.json()) as GoogleDocBody);
+    if (markdown.trim()) return markdown;
+  }
   const response = await fetch(
     `${DRIVE_API}/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent("text/plain")}`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -641,6 +685,89 @@ export async function syncCharterToDrive(
     charterBlocks(projectTitle, charter, signed),
     opts,
   );
+}
+
+export type OverviewDocFields = {
+  question?: string;
+  contribution?: string;
+  year?: string;
+};
+
+const OVERVIEW_HEADINGS: Record<string, keyof OverviewDocFields> = {
+  "research question": "question",
+  contribution: "contribution",
+  year: "year",
+};
+
+/** Read Research question, Contribution, and Year from a Project overview Google Doc. */
+export function parseOverviewMarkdown(markdown: string): OverviewDocFields {
+  const next: OverviewDocFields = {};
+  let key: keyof OverviewDocFields | null = null;
+  const buckets: Partial<Record<keyof OverviewDocFields, string[]>> = {};
+  for (const raw of markdown.split(/\n/)) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const markdownHeading = /^#{1,3}\s+(.+)$/.exec(trimmed);
+    if (markdownHeading) {
+      key = OVERVIEW_HEADINGS[markdownHeading[1].trim().toLowerCase()] ?? null;
+      continue;
+    }
+    const bareHeading = OVERVIEW_HEADINGS[trimmed.toLowerCase()];
+    if (bareHeading) {
+      key = bareHeading;
+      continue;
+    }
+    if (["project health", "status", "project overview"].includes(trimmed.toLowerCase())) {
+      key = null;
+      continue;
+    }
+    if (!key) continue;
+    const text = trimmed.replace(/^\*\*[^*]+:\*\*\s*/, "");
+    if (!text || text === "—" || /^#\s/.test(text) || text.startsWith("Project:")) continue;
+    (buckets[key] ??= []).push(text);
+  }
+  for (const field of Object.keys(OVERVIEW_HEADINGS) as (keyof typeof OVERVIEW_HEADINGS)[]) {
+    const target = OVERVIEW_HEADINGS[field];
+    const parts = buckets[target];
+    if (parts?.length) next[target] = parts.join("\n");
+  }
+  return next;
+}
+
+/** Read the Project Charter Google Doc into the form. Does not write the doc. */
+export async function pullCharterFromDrive(input: {
+  projectId: string;
+  charter: CharterRecord;
+  interactive?: boolean;
+}): Promise<{ charter: CharterRecord; pulled: boolean }> {
+  const interactive = input.interactive === true;
+  try {
+    const markdown = await readFiledDocumentMarkdown(input.projectId, "Project Charter", { interactive });
+    if (markdown == null) return { charter: input.charter, pulled: false };
+    const fromDoc = parseCharterMarkdown(markdown);
+    if (!charterHasContent(fromDoc)) return { charter: input.charter, pulled: false };
+    const merged = mergeCharterFromDoc(input.charter, fromDoc);
+    return { charter: merged, pulled: !chartersEqual(merged, input.charter) };
+  } catch {
+    return { charter: input.charter, pulled: false };
+  }
+}
+
+/** Read the Project overview Google Doc. Does not write the doc. */
+export async function pullOverviewFromDrive(
+  projectId: string,
+  opts?: { interactive?: boolean },
+): Promise<OverviewDocFields | null> {
+  try {
+    const markdown = await readFiledDocumentMarkdown(projectId, "Project overview", {
+      interactive: opts?.interactive === true,
+    });
+    if (markdown == null) return null;
+    const fields = parseOverviewMarkdown(markdown);
+    return fields.question || fields.contribution || fields.year ? fields : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

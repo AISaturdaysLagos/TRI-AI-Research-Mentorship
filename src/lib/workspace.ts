@@ -190,7 +190,7 @@ export async function saveProjectDrive(
     doc(db, "projects", projectId),
     {
       driveFolderId: drive.id,
-      driveFolderUrl: drive.url,
+      driveFolderUrl: `https://drive.google.com/drive/folders/${drive.id}`,
       driveFiles: drive.files.slice(0, 80).map((file) => ({
         id: file.id,
         name: file.name.slice(0, 180),
