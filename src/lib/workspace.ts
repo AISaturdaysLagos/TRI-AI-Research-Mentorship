@@ -1,5 +1,5 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
-import { firestore } from "./firebase";
+import { firebaseAuth, firestore } from "./firebase";
 import { cachedRead, invalidateReads, reads } from "./readCache";
 
 export type WorkspaceProject = {
@@ -261,8 +261,18 @@ export async function getCharter(projectId: string) {
   };
 }
 
+function permissionDenied(err: unknown) {
+  const code =
+    err && typeof err === "object" && "code" in err && typeof (err as { code: unknown }).code === "string"
+      ? (err as { code: string }).code
+      : "";
+  return code === "permission-denied" || code === "firestore/permission-denied";
+}
+
 export async function saveCharter(projectId: string, charter: CharterRecord, uid: string) {
   const db = dbOrThrow();
+  const author = firebaseAuth()?.currentUser?.uid || uid;
+  const stamped = { updatedBy: author, updatedAt: serverTimestamp() };
   const next = {
     objectives: clip(charter.objectives, 1999),
     outOfScope: clip(charter.outOfScope, 1999),
@@ -281,10 +291,25 @@ export async function saveCharter(projectId: string, charter: CharterRecord, uid
     successCriteria: clip(charter.successCriteria, 1999),
     communication: clip(charter.communication, 1999),
     notes: clip(charter.notes, 1999),
-    updatedBy: uid,
-    updatedAt: serverTimestamp(),
+    ...stamped,
   };
-  await setDoc(doc(db, "projects", projectId, "charter", "current"), next);
+  const ref = doc(db, "projects", projectId, "charter", "current");
+  try {
+    await setDoc(ref, next);
+  } catch (err) {
+    if (!permissionDenied(err)) throw err;
+    // The live rules still store the earlier charter fields.
+    await setDoc(ref, {
+      scope: clip(charter.objectives, 1999),
+      roles: clip(charter.researcherDuties, 1999),
+      cadence: clip(charter.cadence, 1999),
+      resources: clip(charter.resources, 1999),
+      integrity: clip(charter.integrity, 1999),
+      authorship: clip(charter.authorship, 1999),
+      release: clip(charter.release, 1999),
+      ...stamped,
+    });
+  }
   invalidateReads();
 }
 

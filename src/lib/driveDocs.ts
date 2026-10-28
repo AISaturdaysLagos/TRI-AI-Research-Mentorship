@@ -45,6 +45,40 @@ const DRIVE = "https://www.googleapis.com/auth/drive";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 
 let cached: { token: string; until: number } | null = null;
+const DRIVE_TOKEN_KEY = "tri.drive.access";
+
+function rememberedDriveToken(uid: string) {
+  if (cached && cached.until > Date.now()) return cached.token;
+  try {
+    const raw = sessionStorage.getItem(DRIVE_TOKEN_KEY);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { uid?: string; token?: string; until?: number };
+    if (parsed.uid !== uid || !parsed.token || !parsed.until || parsed.until <= Date.now()) return "";
+    cached = { token: parsed.token, until: parsed.until };
+    return parsed.token;
+  } catch {
+    return "";
+  }
+}
+
+function rememberDriveToken(uid: string, token: string) {
+  const until = Date.now() + 45 * 60 * 1000;
+  cached = { token, until };
+  try {
+    sessionStorage.setItem(DRIVE_TOKEN_KEY, JSON.stringify({ uid, token, until }));
+  } catch {
+    // The in-memory token still covers this page when storage is blocked.
+  }
+}
+
+function forgetDriveToken() {
+  cached = null;
+  try {
+    sessionStorage.removeItem(DRIVE_TOKEN_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
 
 function named(pairs: readonly (readonly [string, string])[], value?: string) {
   return pairs.find(([item]) => item === value)?.[1] || value || "—";
@@ -280,19 +314,20 @@ async function driveToken(opts?: { interactive?: boolean }) {
   const current = auth?.currentUser;
   if (!auth || !current) return null;
   if (!current.providerData.some((item) => item.providerId === "google.com")) return null;
-  if (cached && cached.until > Date.now()) return cached.token;
+  const remembered = rememberedDriveToken(current.uid);
+  if (remembered) return remembered;
   if (!interactive) return null;
   const provider = new GoogleAuthProvider();
   provider.addScope(DOCUMENTS);
   provider.addScope(DRIVE);
   provider.setCustomParameters({
     login_hint: current.email ?? "",
-    prompt: "consent",
+    include_granted_scopes: "true",
   });
   const result = await signInWithPopup(auth, provider);
   const token = GoogleAuthProvider.credentialFromResult(result)?.accessToken ?? "";
   if (!token) return null;
-  cached = { token, until: Date.now() + 45 * 60 * 1000 };
+  rememberDriveToken(current.uid, token);
   return token;
 }
 
@@ -300,6 +335,7 @@ async function replaceGoogleDoc(token: string, fileId: string, blocks: DocBlock[
   const loaded = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (loaded.status === 401) forgetDriveToken();
   if (!loaded.ok) throw new Error("Could not open the document.");
   const doc = (await loaded.json()) as { body?: { content?: { endIndex?: number }[] } };
   const content = doc.body?.content ?? [];
@@ -403,6 +439,7 @@ async function driveFetch(token: string, url: string, init?: RequestInit) {
     },
   });
   if (!response.ok) {
+    if (response.status === 401) forgetDriveToken();
     const detail = await response.text().catch(() => "");
     throw new Error(driveApiMessage(detail, response.status));
   }
@@ -604,6 +641,7 @@ async function readGoogleDocMarkdown(token: string, fileId: string) {
   const structured = await fetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
+  if (structured.status === 401) forgetDriveToken();
   if (structured.ok) {
     const markdown = googleDocToMarkdown((await structured.json()) as GoogleDocBody);
     if (markdown.trim()) return markdown;
