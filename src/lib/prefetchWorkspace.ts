@@ -51,6 +51,7 @@ function prefetchParticipantChunks() {
   participantChunksStarted = true;
   void import("../pages/Dashboard");
   void import("../pages/Meetings");
+  void import("../pages/RoleTasks");
 }
 
 /** Start every admin tab's records and scripts together, so a later tab opens from cache. */
@@ -79,6 +80,7 @@ export function prefetchAdminWorkspace(uid: string) {
 
 export function prefetchReviewerWorkspace() {
   prefetchAdminChunks();
+  void import("../pages/RoleTasks");
   quiet(listProposals());
   quiet(listProjects());
 }

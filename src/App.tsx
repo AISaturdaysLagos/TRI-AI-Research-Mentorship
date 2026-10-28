@@ -1,7 +1,7 @@
 import { lazy } from "react";
 import { HashRouter, Route, Routes } from "react-router-dom";
 import { PublicLayout, RequireAuth, SdkGate } from "./components/Layout";
-import { AuthProvider } from "./lib/auth";
+import { AuthProvider, useAuth } from "./lib/auth";
 import { AboutPage } from "./pages/About";
 import { HomePage } from "./pages/Home";
 import { HowItWorksPage } from "./pages/HowItWorks";
@@ -21,6 +21,7 @@ const ApplyResearcherPage = lazy(() =>
 const ApplySeniorPage = lazy(() => import("./pages/ApplySenior").then((m) => ({ default: m.ApplySeniorPage })));
 const AwardPage = lazy(() => import("./pages/Award").then((m) => ({ default: m.AwardPage })));
 const DashboardPage = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.DashboardPage })));
+const RoleTasksPage = lazy(() => import("./pages/RoleTasks").then((m) => ({ default: m.RoleTasksPage })));
 const JoinProjectPage = lazy(() => import("./pages/JoinProject").then((m) => ({ default: m.JoinProjectPage })));
 const LoginPage = lazy(() => import("./pages/Login").then((m) => ({ default: m.LoginPage })));
 const MeetingsPage = lazy(() => import("./pages/Meetings").then((m) => ({ default: m.MeetingsPage })));
@@ -35,6 +36,13 @@ const AdminLayout = lazy(() => loadAdmin().then((m) => ({ default: m.AdminLayout
 const AdminMentorsPage = lazy(() => loadAdmin().then((m) => ({ default: m.AdminMentorsPage })));
 const AdminProposalsPage = lazy(() => loadAdmin().then((m) => ({ default: m.AdminProposalsPage })));
 const AdminResearchersPage = lazy(() => loadAdmin().then((m) => ({ default: m.AdminResearchersPage })));
+
+function AdminTasksEntry() {
+  const { profile } = useAuth();
+  if (!profile) return null;
+  if (profile.role === "reviewer") return <RoleTasksPage embedded />;
+  return <AdminTasksPage />;
+}
 
 export function App() {
   return (
@@ -56,6 +64,7 @@ export function App() {
               <Route path="login" element={<LoginPage />} />
               <Route element={<RequireAuth />}>
                 <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="dashboard/tasks" element={<RoleTasksPage />} />
                 <Route path="dashboard/meetings" element={<MeetingsPage />} />
                 <Route path="account" element={<AccountPage />} />
                 <Route path="dashboard/application" element={<ApplyResearcherPage />} />
@@ -63,7 +72,7 @@ export function App() {
                 <Route path="dashboard/projects/:id" element={<ProjectWorkspacePage />} />
                 <Route path="admin" element={<AdminLayout />}>
                   <Route index element={<AdminHomePage />} />
-                  <Route path="tasks" element={<AdminTasksPage />} />
+                  <Route path="tasks" element={<AdminTasksEntry />} />
                   <Route path="proposals" element={<AdminProposalsPage />} />
                   <Route path="proposals/:id" element={<AdminReviewPage />} />
                   <Route path="matching" element={<AdminMatchingPage />} />

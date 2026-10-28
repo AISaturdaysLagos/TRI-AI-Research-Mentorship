@@ -12,6 +12,8 @@ test.describe("Senior · Kwame", () => {
     await signInAs(page, accounts.kwame);
     await expectHeading(page, "Kwame Mensah");
 
+    await go(page, "/dashboard/tasks");
+    await expect(page.getByRole("heading", { name: "Respond to the match request" })).toBeVisible();
     await go(page, "/dashboard");
     await expect(page.getByText("Flood mapping from satellite imagery").first()).toBeVisible();
     await expect(page.getByText("Evaluating translation models for Hausa health information").first()).toBeVisible();

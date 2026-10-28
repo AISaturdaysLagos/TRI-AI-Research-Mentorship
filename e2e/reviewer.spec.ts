@@ -12,8 +12,9 @@ test.describe("Reviewer", () => {
     await signInAs(page, accounts.reviewer);
     await expectHeading(page, /Programme workspace/);
 
-    await expect(page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Tasks" })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Tasks" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Scoping meetings" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Score the proposal" })).toBeVisible();
 
     await go(page, "/admin/proposals/fixture-under-review");
     await expectHeading(page, "A benchmark of African language tokenisers");

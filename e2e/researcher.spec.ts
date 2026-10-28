@@ -11,6 +11,9 @@ test.describe("Researcher · Ada", () => {
   test("dashboard, award, project panels, and first-person email", async ({ page }) => {
     await signInAs(page, accounts.ada);
     await expectHeading(page, "Ada Okonkwo");
+    await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Tasks" }).click();
+    await expect(page.getByRole("heading", { name: "Revise the proposal" })).toBeVisible();
+    await page.getByRole("navigation", { name: "Workspace" }).getByRole("link", { name: "Projects" }).click();
     await expect(page.getByRole("heading", { name: "Flood mapping from satellite imagery" }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: "Open this invite" })).toBeVisible();
 

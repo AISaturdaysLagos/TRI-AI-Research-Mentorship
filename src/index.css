@@ -376,17 +376,18 @@ dd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 16px;
   padding-block: 14px;
   max-width: none;
 }
 
 .hdr-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
-  gap: 8px 16px;
+  gap: 8px 12px;
   align-items: center;
+  margin-left: auto;
 }
 
 .hdr-link {
@@ -420,7 +421,7 @@ dd {
 .hdr-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .theme-toggle,
@@ -441,7 +442,7 @@ dd {
 }
 
 .hdr-burger {
-  display: none;
+  display: inline-flex;
   flex-direction: column;
   gap: 5px;
 }
@@ -514,13 +515,15 @@ dd {
   width: 100%;
 }
 
-@media (max-width: 1400px) {
-  .hdr-nav,
+@media (max-width: 1480px) {
   .hdr-cta.desktop-only {
     display: none;
   }
-  .hdr-burger {
-    display: inline-flex;
+}
+
+@media (max-width: 1120px) {
+  .hdr-nav {
+    display: none;
   }
 }
 

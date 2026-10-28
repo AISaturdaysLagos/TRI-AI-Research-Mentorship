@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Navigate, Outlet } from "react-router-dom";
-import { AttentionNotices } from "../components/AttentionNotices";
 import { Icon, type IconName } from "../components/Icon";
 import { Loader } from "../components/Loader";
 import { StatusChip } from "../components/StatusChip";
@@ -14,7 +13,7 @@ import { SearchSelect } from "../components/SearchSelect";
 export { AdminMentorsPage, AdminResearchersPage } from "./AdminPeople";
 
 const links: { to: string; label: string; icon: IconName; adminOnly?: boolean }[] = [
-  { to: "/admin/tasks", label: "Tasks", icon: "task", adminOnly: true },
+  { to: "/admin/tasks", label: "Tasks", icon: "task" },
   { to: "/admin/proposals", label: "Proposals", icon: "document" },
   { to: "/admin/matching", label: "Matching", icon: "match" },
   { to: "/admin/meetings", label: "Scoping meetings", icon: "meeting", adminOnly: true },
@@ -54,7 +53,6 @@ export function AdminLayout() {
       </header>
       <section className="section-tight">
         <div className="container">
-          <AttentionNotices />
           <Outlet />
         </div>
       </section>
@@ -62,11 +60,11 @@ export function AdminLayout() {
   );
 }
 
-/** `/admin` lands on Tasks for admins and Proposals for reviewers. */
+/** `/admin` lands on Tasks. Reviewers see their own task list on that route. */
 export function AdminHomePage() {
   const { profile } = useAuth();
   if (!profile) return null;
-  return <Navigate to={profile.role === "admin" ? "/admin/tasks" : "/admin/proposals"} replace />;
+  return <Navigate to="/admin/tasks" replace />;
 }
 
 type ProposalRow = {

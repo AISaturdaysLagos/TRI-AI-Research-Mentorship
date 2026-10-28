@@ -6,11 +6,11 @@ import { CloseIcon } from "./CloseButton";
 import { Icon, type IconName } from "./Icon";
 import { Wordmark } from "./Wordmark";
 
-const links: { to: string; label: string; icon: IconName }[] = [
-  { to: "/how-it-works", label: "How It Works", icon: "path" },
-  { to: "/researchers", label: "For Researchers", icon: "researcher" },
-  { to: "/senior-researchers", label: "For Senior Researchers", icon: "senior" },
-  { to: "/research", label: "Research Projects", icon: "projects" },
+const links: { to: string; label: string; icon: IconName; primary?: boolean }[] = [
+  { to: "/how-it-works", label: "How It Works", icon: "path", primary: true },
+  { to: "/researchers", label: "For Researchers", icon: "researcher", primary: true },
+  { to: "/senior-researchers", label: "For Senior Researchers", icon: "senior", primary: true },
+  { to: "/research", label: "Research Projects", icon: "projects", primary: true },
   { to: "/about", label: "About TRI AI Research", icon: "about" },
 ];
 
@@ -61,7 +61,7 @@ export function Header() {
           <Wordmark />
         </NavLink>
         <nav className="hdr-nav" aria-label="Primary">
-          {links.map((link) => (
+          {links.filter((link) => link.primary).map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
@@ -141,7 +141,7 @@ export function Header() {
       </div>
       {open ? (
         <div className="hdr-drawer">
-          <nav className="drawer-nav" aria-label="Mobile">
+          <nav className="drawer-nav" aria-label="Menu">
             {links.map((link) => (
               <NavLink key={link.to} to={link.to} className="drawer-link" onClick={() => setOpen(false)}>
                 <Icon name={link.icon} />

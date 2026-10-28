@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
-import { AttentionNotices } from "../components/AttentionNotices";
 import { EmailSupport } from "../components/EmailSupport";
 import { Loader } from "../components/Loader";
 import { matchResponseEmail, named, returnedDocumentEmail, revisedProposalEmail } from "../lib/email";
@@ -517,7 +516,6 @@ export function DashboardPage() {
       <section className="section-tight">
         <div className="container">
           <div>
-            <AttentionNotices />
             <WorkspaceTabs current={tab} />
             {!loaded ? <Loader label="Loading your records" /> : null}
             {loaded && profile.role === "researcher" && tab === "projects" && pendingInvites.length > 0 ? (

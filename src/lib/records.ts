@@ -259,15 +259,6 @@ export async function listAssignedReviews(reviewerId: string) {
   return visibleRows(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
 }
 
-export async function listDismissedNotices(uid: string) {
-  const db = firestore();
-  if (!db) return [];
-  const snapshot = await getDoc(doc(db, "users", uid));
-  const value = snapshot.data()?.dismissedNotices;
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
-}
-
 export async function saveReview(proposalId: string, review: ReviewRecord) {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
