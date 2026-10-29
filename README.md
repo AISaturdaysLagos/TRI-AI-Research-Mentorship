@@ -16,7 +16,7 @@ cp .env.example .env
 
 Fill the four `VITE_FIREBASE_*` values in `.env` from the Firebase web app config. Those values are public; Firestore Security Rules enforce access. `.env` is gitignored.
 
-`.env.development` sets `VITE_ENABLE_FIXTURES=true` and `VITE_USE_EMULATORS=true`. Vite loads that file for `npm run dev` only, so the dev app uses the local Auth and Firestore emulators. The GitHub Pages build sets `VITE_ENABLE_FIXTURES=true` and leaves the emulator flag unset, so the published site uses the demo Firebase project `tri-ai-research-demo`.
+`.env.development` sets `VITE_ENABLE_FIXTURES=true` and `VITE_USE_EMULATORS=true`. Vite loads that file for `npm run dev` only, so the dev app uses the local Auth and Firestore emulators. GitHub Pages leaves fixtures off and uses the live Firebase project. The hosted demo is a separate build with fixtures on.
 
 ## Local development
 
@@ -72,9 +72,11 @@ One TRI AI Saturdays Research Award can include several researchers. A researche
 - Kwame is also on the Hausa project with Zainab, and on the published Yoruba project with Ifeoma.
 - An admin can copy an invite link from Projects. http://localhost:5173/#/join/join-flood-researcher adds a Researcher to the flood project. http://localhost:5173/#/join/join-flood-senior adds a Senior Researcher. Joining is their choice. A researcher who already belongs to that TRI AI Saturdays Research Award project is not added to a second one.
 
-## GitHub Pages demo
+## Live programme and demo
 
-The published site uses Firebase project `tri-ai-research-demo`. The same demo accounts and records are loaded there with `npm run seed:demo`. Sign-in, projects, meetings, and tasks run against that project.
+The live programme is https://aisaturdayslagos.github.io/TRI-AI-Research-Mentorship/. Sign-in is Google or email. Sample accounts are not on that site. Its Firebase project is `tri-ai-research-demo`, which already holds the programme records.
+
+The programme demo is https://tri-ai-research-mentorship.web.app/. It has the sample accounts and sample projects, in its own Firebase project, so a demo sign-in cannot change the live programme. Load or restore those records with `npm run seed:demo`. Publish a new demo build with `npm run deploy:demo` while logged in to Firebase.
 
 Creating or updating Google Docs on GitHub Pages uses the signed-in Google account (Drive and Docs APIs). Sign in with Google, not only a fixture email/password account. That Google account needs Editor access on the programme Drive folder. Locally, `npm run drive-sync` remains available as a development fallback.
 
@@ -107,7 +109,8 @@ GitHub Actions runs `test:e2e:ci` on pull requests and pushes to `main`.
 | `npm run dev` | Vite dev server, with local fixtures when `.env.development` is present |
 | `npm run emulators` | Firebase Auth and Firestore emulators |
 | `npm run seed:fixtures` | Create the local test accounts and sample records |
-| `npm run seed:demo` | Load those same accounts and records into the demo Firebase project |
+| `npm run seed:demo` | Load the sample accounts and records into the hosted demo |
+| `npm run deploy:demo` | Build the demo and publish it to Firebase Hosting |
 | `npm run test:e2e` | Run Playwright against the local app (expects emulators) |
 | `npm run test:e2e:ui` | Playwright UI mode |
 | `npm run test:e2e:ci` | Emulators, seed, then Playwright |

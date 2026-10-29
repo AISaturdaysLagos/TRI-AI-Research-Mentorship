@@ -1,8 +1,8 @@
 # TRI AI Research Programme demo
 
-Use the published site: https://aisaturdayslagos.github.io/TRI-AI-Research-Mentorship/
+Use the programme demo: https://tri-ai-research-mentorship.web.app/
 
-Sign in from https://aisaturdayslagos.github.io/TRI-AI-Research-Mentorship/#/login. The **Demo accounts** buttons are on that page. Every account uses the password `fixture-pass`.
+Sign in from https://tri-ai-research-mentorship.web.app/#/login. The **Demo accounts** buttons are on that page. Every account uses the password `fixture-pass`. The live programme is separate: https://aisaturdayslagos.github.io/TRI-AI-Research-Mentorship/
 
 Sign out from **Account** before switching roles. The records below are already loaded. Click through them. Creating a proposal, joining an invite, or saving a meeting writes to the shared demo.
 

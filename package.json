@@ -12,6 +12,7 @@
     "drive-sync": "node scripts/drive-sync.mjs",
     "seed:fixtures": "node scripts/seed-fixtures.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
+    "deploy:demo": "sh scripts/deploy-demo.sh",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:ci": "sh scripts/e2e-ci.sh",

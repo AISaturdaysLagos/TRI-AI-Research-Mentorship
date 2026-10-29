@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import { fixturesEnabled } from "../lib/firebase";
+import { demoUrl, hostedDemo, programmeUrl } from "../lib/sites";
 import { Icon, Mark } from "./Icon";
 import { Wordmark } from "./Wordmark";
 
@@ -39,6 +41,12 @@ export function Footer() {
                 <li><a href="https://tri-ai.org"><Icon name="about" /> tri-ai.org</a></li>
                 <li><Link to="/about"><Icon name="about" /> About TRI AI Research</Link></li>
                 <li><Link to="/login"><Icon name="sign-in" /> Sign in</Link></li>
+                {hostedDemo ? (
+                  <li><a href={programmeUrl}><Icon name="about" /> Live programme</a></li>
+                ) : null}
+                {!fixturesEnabled ? (
+                  <li><a href={demoUrl}><Icon name="projects" /> Programme demo</a></li>
+                ) : null}
               </ul>
             </div>
           </div>

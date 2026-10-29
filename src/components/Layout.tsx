@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { firebaseLoaded, loadFirebase } from "../lib/firebase";
+import { hostedDemo, programmeUrl } from "../lib/sites";
 import { Footer } from "./Footer";
 import { Header } from "./Header";
 import { Loader } from "./Loader";
@@ -13,6 +14,12 @@ export function PublicLayout() {
         Skip to content
       </a>
       <Header />
+      {hostedDemo ? (
+        <p className="demo-bar">
+          This is the programme demo. Sample accounts are on the sign-in page.
+          <a href={programmeUrl}>Open the live programme</a>
+        </p>
+      ) : null}
       <main id="main">
         <Suspense fallback={<Loader label="Loading the programme" />}>
           <Outlet />

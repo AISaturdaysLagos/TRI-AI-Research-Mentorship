@@ -869,6 +869,24 @@ dd {
   color: var(--ink);
 }
 
+.demo-bar {
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-mid);
+  font-size: var(--t-small);
+  text-align: center;
+}
+
+.demo-bar a {
+  margin-left: 0.6em;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--gold);
+  text-underline-offset: 3px;
+}
+
 .ftr-bot {
   display: flex;
   justify-content: space-between;

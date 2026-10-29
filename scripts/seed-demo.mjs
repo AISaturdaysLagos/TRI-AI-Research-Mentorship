@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fixtureAccounts, fixturePassword } from "./fixture-accounts.mjs";
 import { buildFixtureDocuments } from "./fixture-data.mjs";
 
-const projectId = "tri-ai-research-demo";
+const projectId = process.argv[2] || "tri-ai-research-mentorship";
 const pagesHost = "aisaturdayslagos.github.io";
 
 function encode(value) {
@@ -120,6 +120,7 @@ async function allowPagesHost(token) {
     body: JSON.stringify({
       authorizedDomains: [
         "localhost",
+        "127.0.0.1",
         pagesHost,
         `${projectId}.firebaseapp.com`,
         `${projectId}.web.app`,
