@@ -1,7 +1,7 @@
-import { FormEvent, Fragment, useState } from "react";
+import { FormEvent, useState } from "react";
 import { MeetingTimePicker, type TimeChoice } from "../components/MeetingTimePicker";
 import { useAuth } from "../lib/auth";
-import { nextSaturdayAtFourWat } from "../lib/calendar";
+import { createGoogleCalendarEvent, nextSaturdayAtFourWat } from "../lib/calendar";
 import { named, openLocalEmail, seniorOnboardingEmail, type EmailDraft } from "../lib/email";
 import { userFacingError } from "../lib/errors";
 import { saveOnboardingMeeting, type OnboardingGuest } from "../lib/onboarding";
@@ -21,7 +21,6 @@ function openingChoice(): TimeChoice {
 export function InviteSeniorResearchers() {
   const { user } = useAuth();
   const [title, setTitle] = useState("Senior Researcher onboarding");
-  const [meetingLink, setMeetingLink] = useState("");
   const [when, setWhen] = useState<TimeChoice>(openingChoice);
   const [guests, setGuests] = useState<OnboardingGuest[]>([blankGuest()]);
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
@@ -58,11 +57,6 @@ export function InviteSeniorResearchers() {
       }
       emails.add(key);
     }
-    const link = meetingLink.trim();
-    if (!link.startsWith("https://")) {
-      setError("The meeting link must start with https://.");
-      return;
-    }
     const startsAt = zonedWallTime(when.date, when.start, when.zone);
     const endsAt = zonedWallTime(when.date, when.end, when.zone);
     if (!(endsAt.getTime() > startsAt.getTime())) {
@@ -71,30 +65,43 @@ export function InviteSeniorResearchers() {
     }
     setBusy(true);
     try {
+      const meetingTitle = title.trim() || "Senior Researcher onboarding";
+      const created = await createGoogleCalendarEvent({
+        title: meetingTitle,
+        starts: startsAt,
+        ends: endsAt,
+        details: "TRI AI Senior Researcher onboarding. This calendar event includes the meeting.",
+        emails: people.map((guest) => guest.email),
+        timeZone: when.zone,
+        meet: true,
+      });
+      if (!created) {
+        setError("Sign in with Google to add these Senior Researchers to Google Calendar. The email uses that calendar link.");
+        return;
+      }
       await saveOnboardingMeeting({
-        title: title.trim() || "Senior Researcher onboarding",
+        title: meetingTitle,
         startsAt,
         endsAt,
-        meetingLink: link,
+        meetingLink: created.link,
         guests: people,
         uid: user.uid,
       });
       const span = formatZonedSpan(startsAt, endsAt, when.zone);
-      const meetingTitle = title.trim() || "Senior Researcher onboarding";
       setDrafts(
         people.map((guest) =>
           seniorOnboardingEmail({
             senior: named(guest.name, guest.email),
             title: meetingTitle,
             when: span,
-            meetingLink: link,
+            calendarLink: created.link,
           }),
         ),
       );
       setMessage(
         people.length === 1
-          ? "The meeting is saved. Open the email, then send it."
-          : `The meeting is saved. Open each of the ${people.length} emails, then send them.`,
+          ? "They are on the Google Calendar event. Open the email, then send it."
+          : `They are on the Google Calendar event. Open each of the ${people.length} emails, then send them.`,
       );
     } catch (err) {
       setError(userFacingError(err, "Could not save the onboarding meeting."));
@@ -104,31 +111,20 @@ export function InviteSeniorResearchers() {
   }
 
   return (
-    <div>
+    <div className="invite-panel">
       <p className="quiet">
-        Add one or more people. Each receives their own email. They share one meeting and one meeting link.
+        Add one or more Senior Researchers. They are added to one Google Calendar event, and that event includes the meeting. Each person then receives their own email with the calendar link.
       </p>
-      <form className="fields" onSubmit={(event) => void onSubmit(event)}>
+      <form className="fields invite-form" onSubmit={(event) => void onSubmit(event)}>
         <label>
           Meeting title
           <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={180} />
         </label>
-        <label>
-          Meeting link
-          <input
-            type="url"
-            inputMode="url"
-            placeholder="https://"
-            value={meetingLink}
-            onChange={(event) => setMeetingLink(event.target.value)}
-            required
-          />
-        </label>
         <MeetingTimePicker value={when} onChange={setWhen} people={[]} />
-        <fieldset>
+        <fieldset className="invite-guests">
           <legend>Senior Researchers</legend>
           {guests.map((guest, index) => (
-            <Fragment key={index}>
+            <div className="invite-guest" key={index}>
               <div className="fields two">
                 <label>
                   Name
@@ -157,7 +153,7 @@ export function InviteSeniorResearchers() {
                   Remove
                 </button>
               ) : null}
-            </Fragment>
+            </div>
           ))}
           {guests.length < MAX_GUESTS ? (
             <button className="btn btn-ghost btn-compact" type="button" onClick={() => setGuests((current) => [...current, blankGuest()])}>
@@ -171,12 +167,12 @@ export function InviteSeniorResearchers() {
         {message ? <p className="notice">{message}</p> : null}
         <div className="actions">
           <button className="btn btn-primary" type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Save meeting and prepare emails"}
+            {busy ? "Adding to Google Calendar…" : "Add to Google Calendar and prepare emails"}
           </button>
         </div>
       </form>
       {drafts.length > 0 ? (
-        <ul>
+        <ul className="invite-emails">
           {drafts.map((draft) => (
             <li key={draft.to[0]?.email}>
               <p>

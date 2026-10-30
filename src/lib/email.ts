@@ -250,7 +250,7 @@ export function seniorOnboardingEmail(input: {
   senior: EmailAddress;
   title: string;
   when: string;
-  meetingLink: string;
+  calendarLink: string;
 }): EmailDraft {
   const params = new URLSearchParams({
     mode: "create",
@@ -267,7 +267,7 @@ export function seniorOnboardingEmail(input: {
     attachments: [],
     body: letter([
       hello([input.senior]),
-      "TRI AI invites you to join the Senior Researcher pool for the TRI AI Research Programme. A Senior Researcher chooses which proposals to take on. Joining is your choice.",
+      "TRI AI invites you to join the Senior Researcher pool for the TRI AI Research Programme.",
       "Create your account on the live programme:",
       signup,
       "How to join:",
@@ -280,7 +280,8 @@ export function seniorOnboardingEmail(input: {
       demoUrl,
       `We have set one onboarding meeting for everyone invited: ${input.title}.`,
       input.when,
-      `Meeting link: ${input.meetingLink}`,
+      "You are on the Google Calendar event. It already includes the meeting:",
+      input.calendarLink,
       "Please tell us if you can attend.",
     ]),
   };
