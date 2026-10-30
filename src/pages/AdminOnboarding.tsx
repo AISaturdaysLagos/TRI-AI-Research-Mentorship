@@ -18,12 +18,20 @@ function openingChoice(): TimeChoice {
   return { date: opening.date, start: opening.start, end: opening.end, zone: PROGRAMME_ZONE };
 }
 
+function withAdmin(emails: string[], adminEmail: string) {
+  const next = emails.filter(Boolean);
+  const admin = adminEmail.trim();
+  if (admin && !next.some((email) => email.toLowerCase() === admin.toLowerCase())) next.push(admin);
+  return next;
+}
+
 export function InviteSeniorResearchers() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [title, setTitle] = useState("Senior Researcher onboarding");
   const [when, setWhen] = useState<TimeChoice>(openingChoice);
   const [guests, setGuests] = useState<OnboardingGuest[]>([blankGuest()]);
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
+  const [calendarHref, setCalendarHref] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,6 +71,13 @@ export function InviteSeniorResearchers() {
       setError("The meeting needs an end time after the start.");
       return;
     }
+    const adminEmail = (profile?.email || user.email || "").trim();
+    if (!adminEmail) {
+      setError("Your account needs an email address before it can be added to Google Calendar.");
+      return;
+    }
+    const calendarWindow = window.open("", "_blank");
+    let calendarOpened = false;
     setBusy(true);
     try {
       const meetingTitle = title.trim() || "Senior Researcher onboarding";
@@ -71,14 +86,20 @@ export function InviteSeniorResearchers() {
         starts: startsAt,
         ends: endsAt,
         details: "TRI AI Senior Researcher onboarding. This calendar event includes the meeting.",
-        emails: people.map((guest) => guest.email),
+        emails: withAdmin(people.map((guest) => guest.email), adminEmail),
         timeZone: when.zone,
         meet: true,
       });
       if (!created) {
+        calendarWindow?.close();
         setError("Sign in with Google to add these Senior Researchers to Google Calendar. The email uses that calendar link.");
         return;
       }
+      if (calendarWindow && !calendarWindow.closed) {
+        calendarWindow.location.href = created.link;
+        calendarOpened = true;
+      } else calendarWindow?.close();
+      setCalendarHref(created.link);
       await saveOnboardingMeeting({
         title: meetingTitle,
         startsAt,
@@ -100,10 +121,11 @@ export function InviteSeniorResearchers() {
       );
       setMessage(
         people.length === 1
-          ? "They are on the Google Calendar event. Open the email, then send it."
-          : `They are on the Google Calendar event. Open each of the ${people.length} emails, then send them.`,
+          ? "Google Calendar is open, with you on the event. Open the email in your mail app."
+          : `Google Calendar is open, with you on the event. Open each of the ${people.length} emails in your mail app.`,
       );
     } catch (err) {
+      if (!calendarOpened) calendarWindow?.close();
       setError(userFacingError(err, "Could not save the onboarding meeting."));
     } finally {
       setBusy(false);
@@ -113,7 +135,7 @@ export function InviteSeniorResearchers() {
   return (
     <div className="invite-panel">
       <p className="quiet">
-        Add one or more Senior Researchers. They are added to one Google Calendar event, and that event includes the meeting. Each person then receives their own email with the calendar link.
+        Add one or more Senior Researchers. You are added to the same Google Calendar event, and that event includes the meeting. Add to Google Calendar opens the event. Each email opens in your mail app with the calendar link.
       </p>
       <form className="fields invite-form" onSubmit={(event) => void onSubmit(event)}>
         <label>
@@ -167,8 +189,13 @@ export function InviteSeniorResearchers() {
         {message ? <p className="notice">{message}</p> : null}
         <div className="actions">
           <button className="btn btn-primary" type="submit" disabled={busy}>
-            {busy ? "Adding to Google Calendar…" : "Add to Google Calendar and prepare emails"}
+            {busy ? "Adding to Google Calendar…" : "Add to Google Calendar"}
           </button>
+          {calendarHref ? (
+            <a className="btn btn-ghost" href={calendarHref} target="_blank" rel="noreferrer">
+              Open Google Calendar
+            </a>
+          ) : null}
         </div>
       </form>
       {drafts.length > 0 ? (
@@ -178,7 +205,7 @@ export function InviteSeniorResearchers() {
               <p>
                 <strong>{draft.to[0]?.name}</strong> {draft.to[0]?.email}
               </p>
-              <button className="btn btn-ghost btn-compact" type="button" onClick={() => void openLocalEmail(draft)}>
+              <button className="btn btn-ghost btn-compact" type="button" onClick={() => void openLocalEmail(draft, { client: true })}>
                 Open email
               </button>
             </li>

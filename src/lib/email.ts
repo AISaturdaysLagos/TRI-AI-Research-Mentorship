@@ -581,8 +581,8 @@ async function downloadEml(draft: EmailDraft) {
   URL.revokeObjectURL(link.href);
 }
 
-export async function openLocalEmail(draft: EmailDraft) {
-  if (draft.attachments.length > 0) {
+export async function openLocalEmail(draft: EmailDraft, options?: { client?: boolean }) {
+  if (!options?.client && draft.attachments.length > 0) {
     try {
       await downloadEml(draft);
       return "attachment";
@@ -592,7 +592,7 @@ export async function openLocalEmail(draft: EmailDraft) {
     }
   }
   const mailto = mailtoUrl(draft);
-  if (mailto.length > 1800) {
+  if (!options?.client && mailto.length > 1800) {
     await downloadEml(draft);
     return "attachment";
   }
