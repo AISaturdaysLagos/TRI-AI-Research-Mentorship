@@ -34,6 +34,10 @@ function visibleRows<T>(rows: T[]) {
   return rows.filter((row) => (row as { fixture?: unknown }).fixture !== true);
 }
 
+function isSampleRecord(data: { fixture?: unknown }) {
+  return !fixturesEnabled && data.fixture === true;
+}
+
 function visibleRow<T>(row: T | null) {
   if (!row || (!fixturesEnabled && (row as { fixture?: unknown }).fixture === true)) return null;
   return row;
@@ -275,6 +279,7 @@ export function listAdmins() {
   return cachedRead(reads.admins, async () => {
     const snapshot = await getDocs(query(collection(db, "users"), where("role", "==", "admin")));
     return snapshot.docs
+      .filter((item) => !isSampleRecord(item.data()))
       .map((item) => ({
         uid: item.id,
         name: String(item.data().displayName || "").trim() || "TRI AI Admin",
@@ -289,12 +294,14 @@ export function listDirectory() {
   if (!db) return Promise.resolve([]);
   return cachedRead(reads.directory, async () => {
     const snapshot = await getDocs(collection(db, "users"));
-    return snapshot.docs.map((item) => ({
-      id: item.id,
-      email: String(item.data().email ?? ""),
-      displayName: String(item.data().displayName ?? ""),
-      role: String(item.data().role ?? ""),
-    }));
+    return snapshot.docs
+      .filter((item) => !isSampleRecord(item.data()))
+      .map((item) => ({
+        id: item.id,
+        email: String(item.data().email ?? ""),
+        displayName: String(item.data().displayName ?? ""),
+        role: String(item.data().role ?? ""),
+      }));
   });
 }
 
