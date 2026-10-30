@@ -976,7 +976,7 @@ service cloud.firestore {
     }
 
     function validOnboarding(data) {
-      return data.keys().hasOnly(['title', 'startsAt', 'endsAt', 'meetingLink', 'guests', 'createdBy', 'createdAt'])
+      return data.keys().hasOnly(['title', 'startsAt', 'endsAt', 'meetingLink', 'calendarEventId', 'timeZone', 'guests', 'createdBy', 'createdAt'])
         && data.title is string
         && data.title.size() > 0
         && data.title.size() < 200
@@ -985,17 +985,32 @@ service cloud.firestore {
         && data.endsAt > data.startsAt
         && data.meetingLink is string
         && data.meetingLink.size() > 12
-        && data.meetingLink.size() < 500
+        && data.meetingLink.size() < 1000
         && data.meetingLink.matches('https://.*')
+        && data.calendarEventId is string
+        && data.calendarEventId.size() > 0
+        && data.calendarEventId.size() < 300
+        && data.timeZone is string
+        && data.timeZone.size() > 1
+        && data.timeZone.size() < 80
+        && data.timeZone.matches('^[A-Za-z0-9+-]+(/[A-Za-z0-9_+-]+)*$')
         && onboardingGuests(data.guests)
-        && data.createdBy == request.auth.uid
+        && data.createdBy is string
+        && data.createdBy.size() > 0
+        && data.createdBy.size() < 200
         && data.createdAt is timestamp;
     }
 
     match /onboardingMeetings/{id} {
       allow read: if isAdmin();
-      allow create: if isAdmin() && validOnboarding(request.resource.data);
-      allow update, delete: if false;
+      allow create: if isAdmin()
+        && validOnboarding(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin()
+        && validOnboarding(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
     }
 
     match /timezones/{uid} {

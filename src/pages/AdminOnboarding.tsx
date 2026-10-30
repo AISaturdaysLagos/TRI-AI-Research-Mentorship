@@ -1,11 +1,16 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { MeetingTimePicker, type TimeChoice } from "../components/MeetingTimePicker";
 import { useAuth } from "../lib/auth";
-import { createGoogleCalendarEvent, nextSaturdayAtFourWat } from "../lib/calendar";
+import { nextSaturdayAtFourWat, saveGoogleCalendarEvent } from "../lib/calendar";
 import { named, openLocalEmail, seniorOnboardingEmail, type EmailDraft } from "../lib/email";
 import { userFacingError } from "../lib/errors";
-import { saveOnboardingMeeting, type OnboardingGuest } from "../lib/onboarding";
-import { PROGRAMME_ZONE, formatZonedSpan, zonedWallTime } from "../lib/timezones";
+import {
+  listOnboardingMeetings,
+  saveOnboardingMeeting,
+  type OnboardingGuest,
+  type OnboardingMeeting,
+} from "../lib/onboarding";
+import { PROGRAMME_ZONE, formatZonedSpan, zonedDateAndTime, zonedWallTime } from "../lib/timezones";
 
 const MAX_GUESTS = 8;
 
@@ -16,6 +21,13 @@ function blankGuest(): OnboardingGuest {
 function openingChoice(): TimeChoice {
   const opening = nextSaturdayAtFourWat();
   return { date: opening.date, start: opening.start, end: opening.end, zone: PROGRAMME_ZONE };
+}
+
+function choiceFromMeeting(meeting: OnboardingMeeting): TimeChoice {
+  const zone = meeting.timeZone || PROGRAMME_ZONE;
+  const start = zonedDateAndTime(meeting.startsAt, zone);
+  const end = zonedDateAndTime(meeting.endsAt, zone);
+  return { date: start.date, start: start.time, end: end.time, zone };
 }
 
 function withAdmin(emails: string[], adminEmail: string) {
@@ -30,14 +42,44 @@ export function InviteSeniorResearchers() {
   const [title, setTitle] = useState("Senior Researcher onboarding");
   const [when, setWhen] = useState<TimeChoice>(openingChoice);
   const [guests, setGuests] = useState<OnboardingGuest[]>([blankGuest()]);
+  const [meetings, setMeetings] = useState<OnboardingMeeting[]>([]);
+  const [editingId, setEditingId] = useState("");
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
   const [calendarHref, setCalendarHref] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    listOnboardingMeetings()
+      .then(setMeetings)
+      .catch((err: unknown) => setError(userFacingError(err, "Could not load onboarding meetings.")));
+  }, []);
+
   function updateGuest(index: number, patch: Partial<OnboardingGuest>) {
     setGuests((current) => current.map((guest, item) => (item === index ? { ...guest, ...patch } : guest)));
+  }
+
+  function beginNew() {
+    setEditingId("");
+    setTitle("Senior Researcher onboarding");
+    setWhen(openingChoice());
+    setGuests([blankGuest()]);
+    setDrafts([]);
+    setCalendarHref("");
+    setMessage("");
+    setError("");
+  }
+
+  function beginEdit(meeting: OnboardingMeeting) {
+    setEditingId(meeting.id);
+    setTitle(meeting.title);
+    setWhen(choiceFromMeeting(meeting));
+    setGuests(meeting.guests.length > 0 ? meeting.guests : [blankGuest()]);
+    setDrafts([]);
+    setCalendarHref(meeting.meetingLink);
+    setMessage("");
+    setError("");
   }
 
   async function onSubmit(event: FormEvent) {
@@ -76,17 +118,22 @@ export function InviteSeniorResearchers() {
       setError("Your account needs an email address before it can be added to Google Calendar.");
       return;
     }
+    const existing = meetings.find((meeting) => meeting.id === editingId);
     const calendarWindow = window.open("", "_blank");
     let calendarOpened = false;
     setBusy(true);
     try {
       const meetingTitle = title.trim() || "Senior Researcher onboarding";
-      const created = await createGoogleCalendarEvent({
+      const created = await saveGoogleCalendarEvent({
+        eventId: existing?.calendarEventId,
         title: meetingTitle,
         starts: startsAt,
         ends: endsAt,
-        details: "TRI AI Senior Researcher onboarding. This calendar event includes the meeting.",
-        emails: withAdmin(people.map((guest) => guest.email), adminEmail),
+        details: "TRI AI Research Mentorship Programme. Senior Researcher onboarding. This calendar event includes the meeting.",
+        emails: withAdmin(
+          people.map((guest) => guest.email),
+          adminEmail,
+        ),
         timeZone: when.zone,
         meet: true,
       });
@@ -100,14 +147,31 @@ export function InviteSeniorResearchers() {
         calendarOpened = true;
       } else calendarWindow?.close();
       setCalendarHref(created.link);
-      await saveOnboardingMeeting({
+      const id = await saveOnboardingMeeting({
+        id: existing?.id,
         title: meetingTitle,
         startsAt,
         endsAt,
         meetingLink: created.link,
+        calendarEventId: created.eventId,
+        timeZone: when.zone,
         guests: people,
         uid: user.uid,
       });
+      const saved: OnboardingMeeting = {
+        id,
+        title: meetingTitle,
+        startsAt,
+        endsAt,
+        meetingLink: created.link,
+        calendarEventId: created.eventId,
+        timeZone: when.zone,
+        guests: people,
+      };
+      setMeetings((current) =>
+        [...current.filter((meeting) => meeting.id !== id), saved].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime()),
+      );
+      setEditingId(id);
       const span = formatZonedSpan(startsAt, endsAt, when.zone);
       setDrafts(
         people.map((guest) =>
@@ -120,9 +184,11 @@ export function InviteSeniorResearchers() {
         ),
       );
       setMessage(
-        people.length === 1
-          ? "Google Calendar is open, with you on the event. Open the email in your mail app."
-          : `Google Calendar is open, with you on the event. Open each of the ${people.length} emails in your mail app.`,
+        existing
+          ? "The meeting is saved and Google Calendar is open. Open each email in your email app."
+          : people.length === 1
+            ? "Google Calendar is open, with you on the event. Open the email in your email app."
+            : `Google Calendar is open, with you on the event. Open each of the ${people.length} emails in your email app.`,
       );
     } catch (err) {
       if (!calendarOpened) calendarWindow?.close();
@@ -132,12 +198,47 @@ export function InviteSeniorResearchers() {
     }
   }
 
+  const editing = Boolean(editingId);
+
   return (
     <div className="invite-panel">
       <p className="quiet">
-        Add one or more Senior Researchers. You are added to the same Google Calendar event, and that event includes the meeting. Add to Google Calendar opens the event. Each email opens in your mail app with the calendar link.
+        Add one or more Senior Researchers. You are added to the same Google Calendar event, and that event includes the meeting. Saved meetings stay here, so you can change the time or add another Senior Researcher. Add to Google Calendar opens the event. Each email opens in your email app with the calendar link.
       </p>
+      <div>
+        <h3>Saved meetings</h3>
+        {meetings.length === 0 ? (
+          <p className="quiet">No onboarding meetings yet.</p>
+        ) : (
+          <ul className="invite-saved">
+            {meetings.map((meeting) => (
+              <li key={meeting.id} className={meeting.id === editingId ? "is-current" : undefined}>
+                <p>
+                  <strong>{meeting.title}</strong>
+                  <br />
+                  <span className="quiet">{formatZonedSpan(meeting.startsAt, meeting.endsAt, meeting.timeZone || PROGRAMME_ZONE)}</span>
+                  <br />
+                  <span className="quiet">
+                    {meeting.guests.length === 1 ? "1 Senior Researcher" : `${meeting.guests.length} Senior Researchers`}
+                  </span>
+                </p>
+                <button className="btn btn-ghost btn-compact" type="button" onClick={() => beginEdit(meeting)}>
+                  Edit
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <form className="fields invite-form" onSubmit={(event) => void onSubmit(event)}>
+        <div className="invite-form-head">
+          <h3>{editing ? "Edit meeting" : "New meeting"}</h3>
+          {editing ? (
+            <button className="btn btn-ghost btn-compact" type="button" onClick={beginNew}>
+              New meeting
+            </button>
+          ) : null}
+        </div>
         <label>
           Meeting title
           <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={180} />
@@ -146,7 +247,7 @@ export function InviteSeniorResearchers() {
         <fieldset className="invite-guests">
           <legend>Senior Researchers</legend>
           {guests.map((guest, index) => (
-            <div className="invite-guest" key={index}>
+            <div className="invite-guest" key={`${editingId}-${index}`}>
               <div className="fields two">
                 <label>
                   Name
@@ -189,7 +290,7 @@ export function InviteSeniorResearchers() {
         {message ? <p className="notice">{message}</p> : null}
         <div className="actions">
           <button className="btn btn-primary" type="submit" disabled={busy}>
-            {busy ? "Adding to Google Calendar…" : "Add to Google Calendar"}
+            {busy ? "Saving…" : editing ? "Save changes" : "Add to Google Calendar"}
           </button>
           {calendarHref ? (
             <a className="btn btn-ghost" href={calendarHref} target="_blank" rel="noreferrer">

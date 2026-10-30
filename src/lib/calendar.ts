@@ -72,7 +72,7 @@ export function calendarTemplateLink(input: {
   return url.toString();
 }
 
-export async function createGoogleCalendarEvent(input: {
+type CalendarEventInput = {
   title: string;
   starts: Date;
   ends: Date;
@@ -80,7 +80,11 @@ export async function createGoogleCalendarEvent(input: {
   emails: string[];
   timeZone?: string;
   meet?: boolean;
-}) {
+};
+
+type CalendarEventResult = { eventId: string; link: string };
+
+async function calendarAccessToken() {
   const auth = firebaseAuth();
   const current = auth?.currentUser;
   if (!auth || !current) return null;
@@ -92,41 +96,84 @@ export async function createGoogleCalendarEvent(input: {
     prompt: "consent",
   });
   const result = await signInWithPopup(auth, provider);
-  const token = GoogleAuthProvider.credentialFromResult(result)?.accessToken;
-  if (!token) return null;
+  return GoogleAuthProvider.credentialFromResult(result)?.accessToken ?? null;
+}
+
+function calendarEventBody(input: CalendarEventInput, meet: boolean) {
   const timeZone = input.timeZone || "Africa/Lagos";
+  return {
+    summary: input.title,
+    description: input.details,
+    start: { dateTime: input.starts.toISOString(), timeZone },
+    end: { dateTime: input.ends.toISOString(), timeZone },
+    attendees: input.emails.filter(Boolean).map((email) => ({ email })),
+    ...(meet
+      ? {
+          conferenceData: {
+            createRequest: {
+              requestId: crypto.randomUUID(),
+              conferenceSolutionKey: { type: "hangoutsMeet" },
+            },
+          },
+        }
+      : {}),
+  };
+}
+
+async function insertCalendarEvent(token: string, input: CalendarEventInput): Promise<CalendarEventResult> {
+  const meet = input.meet !== false;
   const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
   url.searchParams.set("sendUpdates", "all");
-  if (input.meet) url.searchParams.set("conferenceDataVersion", "1");
+  if (meet) url.searchParams.set("conferenceDataVersion", "1");
   const response = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      summary: input.title,
-      description: input.details,
-      start: { dateTime: input.starts.toISOString(), timeZone },
-      end: { dateTime: input.ends.toISOString(), timeZone },
-      attendees: input.emails.filter(Boolean).map((email) => ({ email })),
-      ...(input.meet
-        ? {
-            conferenceData: {
-              createRequest: {
-                requestId: crypto.randomUUID(),
-                conferenceSolutionKey: { type: "hangoutsMeet" },
-              },
-            },
-          }
-        : {}),
-    }),
+    body: JSON.stringify(calendarEventBody(input, meet)),
   });
   if (!response.ok) throw new Error("Could not save this meeting in Google Calendar.");
   const body = (await response.json()) as { id?: string; htmlLink?: string; hangoutLink?: string };
-  if (!body.htmlLink?.startsWith("https://")) return null;
-  if (input.meet && !body.hangoutLink?.startsWith("https://")) {
+  if (!body.htmlLink?.startsWith("https://")) throw new Error("Could not save this meeting in Google Calendar.");
+  if (meet && !body.hangoutLink?.startsWith("https://")) {
     throw new Error("Google Calendar did not add a meeting to this event.");
   }
   return { eventId: String(body.id ?? ""), link: body.htmlLink };
+}
+
+export async function createGoogleCalendarEvent(input: CalendarEventInput) {
+  const token = await calendarAccessToken();
+  if (!token) return null;
+  return insertCalendarEvent(token, input);
+}
+
+/** Create the event, or update it when it already exists. One Google sign-in covers both. */
+export async function saveGoogleCalendarEvent(input: CalendarEventInput & { eventId?: string }) {
+  const token = await calendarAccessToken();
+  if (!token) return null;
+  const eventId = input.eventId?.trim();
+  if (eventId) {
+    const url = new URL(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`,
+    );
+    url.searchParams.set("sendUpdates", "all");
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(calendarEventBody(input, false)),
+    });
+    if (response.ok) {
+      const body = (await response.json()) as { id?: string; htmlLink?: string };
+      if (body.htmlLink?.startsWith("https://")) {
+        return { eventId: String(body.id || eventId), link: body.htmlLink };
+      }
+    } else if (response.status !== 404) {
+      throw new Error("Could not save this meeting in Google Calendar.");
+    }
+  }
+  return insertCalendarEvent(token, { ...input, meet: true });
 }

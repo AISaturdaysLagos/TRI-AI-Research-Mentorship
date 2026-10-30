@@ -267,7 +267,7 @@ export function seniorOnboardingEmail(input: {
     attachments: [],
     body: letter([
       hello([input.senior]),
-      "TRI AI invites you to join the Senior Researcher pool for the TRI AI Research Programme.",
+      "TRI AI invites you to join the Senior Researcher pool for the TRI AI Research Mentorship Programme.",
       "Create your account on the live programme:",
       signup,
       "How to join:",
