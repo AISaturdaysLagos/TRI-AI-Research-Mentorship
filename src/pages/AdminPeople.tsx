@@ -599,7 +599,7 @@ export function AdminMentorsPage() {
         <h2>Senior Researchers</h2>
         <p className="quiet">Invite people into the pool, then search profiles and update availability.</p>
       </div>
-      <details className="fold" open>
+      <details className="fold">
         <summary>Invite Senior Researchers</summary>
         <div className="fold-body">
           <InviteSeniorResearchers />
