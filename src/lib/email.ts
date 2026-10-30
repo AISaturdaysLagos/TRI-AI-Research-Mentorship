@@ -1,5 +1,6 @@
 import { fixturesEnabled } from "./firebase";
 import { returnFoldersFor, type ReturnFolder } from "./returns";
+import { demoUrl, programmeUrl } from "./sites";
 
 export type EmailAddress = { name: string; email: string };
 
@@ -243,6 +244,46 @@ export function activationEmail(input: { title: string; parties: EmailAddress[];
 
 export function charterRequestEmail(input: { title: string; parties: EmailAddress[]; projectId: string }): EmailDraft {
   return introductionEmail({ ...input, scoping: "" });
+}
+
+export function seniorOnboardingEmail(input: {
+  senior: EmailAddress;
+  title: string;
+  when: string;
+  meetingLink: string;
+}): EmailDraft {
+  const params = new URLSearchParams({
+    mode: "create",
+    role: "senior_researcher",
+    email: input.senior.email,
+    name: input.senior.name,
+  });
+  const signup = `${programmeUrl}#/login?${params.toString()}`;
+  const profile = `${programmeUrl}#/apply/senior-researcher`;
+  return {
+    to: [input.senior],
+    cc: [],
+    subject: "Join the TRI AI Senior Researcher pool",
+    attachments: [],
+    body: letter([
+      hello([input.senior]),
+      "TRI AI invites you to join the Senior Researcher pool for the TRI AI Research Programme. A Senior Researcher chooses which proposals to take on. Joining is your choice.",
+      "Create your account on the live programme:",
+      signup,
+      "How to join:",
+      "1. Open that link.",
+      "2. Choose Create an account, or Continue with Google.",
+      "3. Choose Senior Researcher.",
+      `4. Complete your profile so TRI AI knows your research areas: ${profile}`,
+      "If you already have an account, sign in with it and open the same profile page.",
+      "You can look around first on the programme demo. Sample accounts are on the sign-in page. The demo is separate from the live programme, so a demo sign-in does not create your live account:",
+      demoUrl,
+      `We have set one onboarding meeting for everyone invited: ${input.title}.`,
+      input.when,
+      `Meeting link: ${input.meetingLink}`,
+      "Please tell us if you can attend.",
+    ]),
+  };
 }
 
 export function seniorWelcomeEmail(input: { senior: EmailAddress; areas: string }): EmailDraft {

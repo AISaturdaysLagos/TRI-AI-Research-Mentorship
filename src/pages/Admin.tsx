@@ -20,6 +20,7 @@ const links: { to: string; label: string; icon: IconName; adminOnly?: boolean }[
   { to: "/admin/projects", label: "Projects", icon: "projects" },
   { to: "/admin/researchers", label: "Researchers", icon: "researcher", adminOnly: true },
   { to: "/admin/mentors", label: "Senior Researchers", icon: "senior", adminOnly: true },
+  { to: "/admin/onboarding", label: "Invite Senior Researchers", icon: "email", adminOnly: true },
   { to: "/admin/reports", label: "Reports", icon: "report" },
 ];
 

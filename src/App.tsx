@@ -12,6 +12,7 @@ const AccountPage = lazy(() => import("./pages/Account").then((m) => ({ default:
 const AdminReportsPage = lazy(() => import("./pages/AdminReports").then((m) => ({ default: m.AdminReportsPage })));
 const AdminTasksPage = lazy(() => import("./pages/AdminTasks").then((m) => ({ default: m.AdminTasksPage })));
 const AdminMeetingsPage = lazy(() => import("./pages/AdminMeetings").then((m) => ({ default: m.AdminMeetingsPage })));
+const AdminOnboardingPage = lazy(() => import("./pages/AdminOnboarding").then((m) => ({ default: m.AdminOnboardingPage })));
 const AdminProjectsPage = lazy(() => import("./pages/AdminProjects").then((m) => ({ default: m.AdminProjectsPage })));
 const AdminMatchingPage = lazy(() => import("./pages/AdminMatching").then((m) => ({ default: m.AdminMatchingPage })));
 const AdminReviewPage = lazy(() => import("./pages/AdminReview").then((m) => ({ default: m.AdminReviewPage })));
@@ -80,6 +81,7 @@ export function App() {
                   <Route path="projects" element={<AdminProjectsPage />} />
                   <Route path="researchers" element={<AdminResearchersPage />} />
                   <Route path="mentors" element={<AdminMentorsPage />} />
+                  <Route path="onboarding" element={<AdminOnboardingPage />} />
                   <Route path="reports" element={<AdminReportsPage />} />
                 </Route>
               </Route>

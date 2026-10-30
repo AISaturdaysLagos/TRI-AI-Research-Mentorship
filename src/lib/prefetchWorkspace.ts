@@ -40,6 +40,7 @@ function prefetchAdminChunks() {
   void import("../pages/AdminTasks");
   void import("../pages/AdminMatching");
   void import("../pages/AdminMeetings");
+  void import("../pages/AdminOnboarding");
   void import("../pages/AdminProjects");
   void import("../pages/AdminPeople");
   void import("../pages/AdminReports");

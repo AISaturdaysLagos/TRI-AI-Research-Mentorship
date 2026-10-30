@@ -950,6 +950,54 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    function onboardingGuest(person) {
+      return person.keys().hasOnly(['name', 'email'])
+        && person.name is string
+        && person.name.size() > 1
+        && person.name.size() < 120
+        && person.email is string
+        && person.email.size() > 5
+        && person.email.size() < 200
+        && person.email.matches('.*@.*\\..*');
+    }
+
+    function onboardingGuests(list) {
+      return list is list
+        && list.size() > 0
+        && list.size() < 9
+        && onboardingGuest(list[0])
+        && (list.size() < 2 || onboardingGuest(list[1]))
+        && (list.size() < 3 || onboardingGuest(list[2]))
+        && (list.size() < 4 || onboardingGuest(list[3]))
+        && (list.size() < 5 || onboardingGuest(list[4]))
+        && (list.size() < 6 || onboardingGuest(list[5]))
+        && (list.size() < 7 || onboardingGuest(list[6]))
+        && (list.size() < 8 || onboardingGuest(list[7]));
+    }
+
+    function validOnboarding(data) {
+      return data.keys().hasOnly(['title', 'startsAt', 'endsAt', 'meetingLink', 'guests', 'createdBy', 'createdAt'])
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() < 200
+        && data.startsAt is timestamp
+        && data.endsAt is timestamp
+        && data.endsAt > data.startsAt
+        && data.meetingLink is string
+        && data.meetingLink.size() > 12
+        && data.meetingLink.size() < 500
+        && data.meetingLink.matches('https://.*')
+        && onboardingGuests(data.guests)
+        && data.createdBy == request.auth.uid
+        && data.createdAt is timestamp;
+    }
+
+    match /onboardingMeetings/{id} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && validOnboarding(request.resource.data);
+      allow update, delete: if false;
+    }
+
     match /timezones/{uid} {
       allow get: if signedIn();
       allow list: if isAdmin();
