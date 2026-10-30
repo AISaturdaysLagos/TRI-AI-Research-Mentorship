@@ -1,7 +1,7 @@
 import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { firebaseAuth } from "./firebase";
 import {
-  PROGRAMME_RETURNS_FOLDER_ID,
+  driveParentFolderId,
   personFolderName,
   projectDrive,
   rememberDriveFiles,
@@ -684,7 +684,7 @@ export async function updateFiledDocument(
       projectId,
       title: drive?.name || "Project",
       folderId: drive?.id || "",
-      parentId: PROGRAMME_RETURNS_FOLDER_ID,
+      parentId: driveParentFolderId(),
       people: [],
       documents: [{ name, markdown: blocksToMarkdown(blocks) }],
     });
@@ -862,7 +862,7 @@ export async function ensureProjectDrive(input: {
     projectId: input.projectId,
     title: input.title,
     folderId: drive?.id || "",
-    parentId: PROGRAMME_RETURNS_FOLDER_ID,
+    parentId: driveParentFolderId(),
     people: people.map((person) => ({ name: personFolderName(person.name, person.role) })),
     documents,
   });

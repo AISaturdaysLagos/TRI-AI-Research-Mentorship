@@ -1,3 +1,5 @@
+import { hostedDemo } from "./sites";
+
 export type ProjectDriveFile = {
   id: string;
   name: string;
@@ -117,6 +119,11 @@ const drives: Record<string, ProjectDrive> = {
 };
 
 export const PROGRAMME_RETURNS_FOLDER_ID = "1wa39VNAlKAzEqAi_douXgDdIJnkQ1MfQ";
+export const DEMO_DRIVE_FOLDER_ID = "1QXC6LMYBJxb5DQH_wBE-brIjv2pEcWU0";
+
+export function driveParentFolderId() {
+  return hostedDemo ? DEMO_DRIVE_FOLDER_ID : PROGRAMME_RETURNS_FOLDER_ID;
+}
 
 const overlays = new Map<string, ProjectDriveFile[]>();
 

@@ -76,7 +76,7 @@ One TRI AI Saturdays Research Award can include several researchers. A researche
 
 The live programme is https://aisaturdayslagos.github.io/TRI-AI-Research-Mentorship/. Sign-in is Google or email. Sample accounts are not on that site. Its Firebase project is `tri-ai-research-demo`, which already holds the programme records.
 
-The programme demo is https://tri-ai-research-mentorship.web.app/. It has the sample accounts and sample projects, in its own Firebase project, so a demo sign-in cannot change the live programme. Load or restore those records with `npm run seed:demo`. Publish a new demo build with `npm run deploy:demo` while logged in to Firebase.
+The programme demo is https://tri-ai-research-mentorship.web.app/. It has the sample accounts and sample projects, in its own Firebase project, so a demo sign-in cannot change the live programme. Its Google Drive folders live in the Programme demo folder inside the programme Drive. Load or restore those records with `npm run seed:demo`. Publish a new demo build with `npm run deploy:demo` while logged in to Firebase.
 
 Creating or updating Google Docs on GitHub Pages uses the signed-in Google account (Drive and Docs APIs). Sign in with Google, not only a fixture email/password account. That Google account needs Editor access on the programme Drive folder. Locally, `npm run drive-sync` remains available as a development fallback.
 
