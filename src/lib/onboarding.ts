@@ -1,4 +1,4 @@
-import { Timestamp, collection, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
+import { Timestamp, collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from "firebase/firestore";
 import { firestore } from "./firebase";
 import { PROGRAMME_ZONE } from "./timezones";
 
@@ -93,4 +93,10 @@ export async function saveOnboardingMeeting(input: {
     createdAt: serverTimestamp(),
   });
   return ref.id;
+}
+
+export async function deleteOnboardingMeeting(id: string) {
+  const db = firestore();
+  if (!db) throw new Error("This is unavailable right now.");
+  await deleteDoc(doc(db, "onboardingMeetings", id));
 }

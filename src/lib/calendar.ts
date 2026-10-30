@@ -177,3 +177,20 @@ export async function saveGoogleCalendarEvent(input: CalendarEventInput & { even
   }
   return insertCalendarEvent(token, { ...input, meet: true });
 }
+
+/** Remove an event from the signed-in Google Calendar and notify the guests. */
+export async function deleteGoogleCalendarEvent(eventId: string) {
+  const token = await calendarAccessToken();
+  if (!token) return null;
+  const id = eventId.trim();
+  if (!id) return "missing" as const;
+  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`);
+  url.searchParams.set("sendUpdates", "all");
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (response.status === 204 || response.status === 200) return "removed" as const;
+  if (response.status === 404 || response.status === 410) return "missing" as const;
+  throw new Error("Could not remove this meeting from Google Calendar.");
+}

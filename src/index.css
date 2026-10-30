@@ -1856,6 +1856,10 @@ input[type="time"] {
   margin: 0;
 }
 
+.invite-saved .actions {
+  margin-top: 0;
+}
+
 .charter-read {
   display: grid;
   gap: 14px;

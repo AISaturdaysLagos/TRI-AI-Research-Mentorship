@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
 import { MeetingTimePicker, type TimeChoice } from "../components/MeetingTimePicker";
 import { useAuth } from "../lib/auth";
-import { nextSaturdayAtFourWat, saveGoogleCalendarEvent } from "../lib/calendar";
+import { deleteGoogleCalendarEvent, nextSaturdayAtFourWat, saveGoogleCalendarEvent } from "../lib/calendar";
 import { named, openLocalEmail, seniorOnboardingEmail, type EmailDraft } from "../lib/email";
 import { userFacingError } from "../lib/errors";
 import {
+  deleteOnboardingMeeting,
   listOnboardingMeetings,
   saveOnboardingMeeting,
   type OnboardingGuest,
@@ -44,6 +45,7 @@ export function InviteSeniorResearchers() {
   const [guests, setGuests] = useState<OnboardingGuest[]>([blankGuest()]);
   const [meetings, setMeetings] = useState<OnboardingMeeting[]>([]);
   const [editingId, setEditingId] = useState("");
+  const [confirmingId, setConfirmingId] = useState("");
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
   const [calendarHref, setCalendarHref] = useState("");
   const [message, setMessage] = useState("");
@@ -62,6 +64,7 @@ export function InviteSeniorResearchers() {
 
   function beginNew() {
     setEditingId("");
+    setConfirmingId("");
     setTitle("Senior Researcher onboarding");
     setWhen(openingChoice());
     setGuests([blankGuest()]);
@@ -73,6 +76,7 @@ export function InviteSeniorResearchers() {
 
   function beginEdit(meeting: OnboardingMeeting) {
     setEditingId(meeting.id);
+    setConfirmingId("");
     setTitle(meeting.title);
     setWhen(choiceFromMeeting(meeting));
     setGuests(meeting.guests.length > 0 ? meeting.guests : [blankGuest()]);
@@ -80,6 +84,37 @@ export function InviteSeniorResearchers() {
     setCalendarHref(meeting.meetingLink);
     setMessage("");
     setError("");
+  }
+
+  async function removeMeeting(meeting: OnboardingMeeting) {
+    setError("");
+    setMessage("");
+    setBusy(true);
+    try {
+      let calendarNote = "";
+      if (meeting.calendarEventId) {
+        const removed = await deleteGoogleCalendarEvent(meeting.calendarEventId);
+        if (!removed) {
+          setConfirmingId("");
+          setError("Sign in with Google to delete this meeting from Google Calendar.");
+          return;
+        }
+        calendarNote =
+          removed === "removed"
+            ? " Guests are notified by Google Calendar."
+            : " It was not on this Google Calendar. Cancel it there if it is still listed.";
+      }
+      await deleteOnboardingMeeting(meeting.id);
+      setMeetings((current) => current.filter((item) => item.id !== meeting.id));
+      if (editingId === meeting.id) beginNew();
+      setConfirmingId("");
+      setDrafts([]);
+      setMessage(`The meeting is deleted.${calendarNote}`);
+    } catch (err) {
+      setError(userFacingError(err, "Could not delete the onboarding meeting."));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onSubmit(event: FormEvent) {
@@ -203,7 +238,7 @@ export function InviteSeniorResearchers() {
   return (
     <div className="invite-panel">
       <p className="quiet">
-        Add one or more Senior Researchers. You are added to the same Google Calendar event, and that event includes the meeting. Saved meetings stay here, so you can change the time or add another Senior Researcher. Add to Google Calendar opens the event. Each email opens in your email app with the calendar link.
+        Add one or more Senior Researchers. You are added to the same Google Calendar event, and that event includes the meeting. Saved meetings stay here, so you can change the time, add another Senior Researcher, or delete the meeting. Add to Google Calendar opens the event. Each email opens in your email app with the calendar link.
       </p>
       <div>
         <h3>Saved meetings</h3>
@@ -222,9 +257,29 @@ export function InviteSeniorResearchers() {
                     {meeting.guests.length === 1 ? "1 Senior Researcher" : `${meeting.guests.length} Senior Researchers`}
                   </span>
                 </p>
-                <button className="btn btn-ghost btn-compact" type="button" onClick={() => beginEdit(meeting)}>
-                  Edit
-                </button>
+                <div className="actions">
+                  <button className="btn btn-ghost btn-compact" type="button" disabled={busy} onClick={() => beginEdit(meeting)}>
+                    Edit
+                  </button>
+                  {confirmingId === meeting.id ? (
+                    <button className="btn btn-danger btn-compact" type="button" disabled={busy} onClick={() => void removeMeeting(meeting)}>
+                      {busy ? "Deleting…" : "Confirm delete"}
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-ghost btn-compact"
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setConfirmingId(meeting.id);
+                        setError("");
+                        setMessage("");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -290,7 +345,7 @@ export function InviteSeniorResearchers() {
         {message ? <p className="notice">{message}</p> : null}
         <div className="actions">
           <button className="btn btn-primary" type="submit" disabled={busy}>
-            {busy ? "Saving…" : editing ? "Save changes" : "Add to Google Calendar"}
+            {busy && !confirmingId ? "Saving…" : editing ? "Save changes" : "Add to Google Calendar"}
           </button>
           {calendarHref ? (
             <a className="btn btn-ghost" href={calendarHref} target="_blank" rel="noreferrer">
