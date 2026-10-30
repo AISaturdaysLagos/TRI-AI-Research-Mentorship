@@ -1,5 +1,6 @@
 import { FormEvent, Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CloseButton } from "../components/CloseButton";
+import { InviteSeniorResearchers } from "./AdminOnboarding";
 import { EmailSupport } from "../components/EmailSupport";
 import { Loader } from "../components/Loader";
 import { ResearcherProfileFields } from "../components/ResearcherProfileFields";
@@ -596,8 +597,14 @@ export function AdminMentorsPage() {
     <div className="directory">
       <div className="directory-intro">
         <h2>Senior Researchers</h2>
-        <p className="quiet">Search the pool, update profiles, and manage availability at scale.</p>
+        <p className="quiet">Invite people into the pool, then search profiles and update availability.</p>
       </div>
+      <details className="fold" open>
+        <summary>Invite Senior Researchers</summary>
+        <div className="fold-body">
+          <InviteSeniorResearchers />
+        </div>
+      </details>
       {error ? <p className="error">{error}</p> : null}
       {notice ? <p className="notice">{notice}</p> : null}
       <DirectoryToolbar

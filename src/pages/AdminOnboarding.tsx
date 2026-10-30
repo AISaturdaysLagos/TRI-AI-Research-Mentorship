@@ -18,7 +18,7 @@ function openingChoice(): TimeChoice {
   return { date: opening.date, start: opening.start, end: opening.end, zone: PROGRAMME_ZONE };
 }
 
-export function AdminOnboardingPage() {
+export function InviteSeniorResearchers() {
   const { user } = useAuth();
   const [title, setTitle] = useState("Senior Researcher onboarding");
   const [meetingLink, setMeetingLink] = useState("");
@@ -105,7 +105,6 @@ export function AdminOnboardingPage() {
 
   return (
     <div>
-      <h2>Invite Senior Researchers</h2>
       <p className="quiet">
         Add one or more people. Each receives their own email. They share one meeting and one meeting link.
       </p>
