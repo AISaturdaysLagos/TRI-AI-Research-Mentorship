@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { firebaseLoaded, loadFirebase } from "../lib/firebase";
@@ -7,9 +7,18 @@ import { Footer } from "./Footer";
 import { Header } from "./Header";
 import { Loader } from "./Loader";
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
 export function PublicLayout() {
   return (
     <div className="shell">
+      <ScrollToTop />
       <a className="skip" href="#main">
         Skip to content
       </a>
