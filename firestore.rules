@@ -976,7 +976,8 @@ service cloud.firestore {
     }
 
     function validOnboarding(data) {
-      return data.keys().hasOnly(['title', 'startsAt', 'endsAt', 'meetingLink', 'calendarEventId', 'timeZone', 'guests', 'createdBy', 'createdAt'])
+      return data.keys().hasOnly(['title', 'startsAt', 'endsAt', 'meetingLink', 'calendarEventId', 'timeZone', 'guests', 'audience', 'createdBy', 'createdAt'])
+        && (!data.keys().hasAny(['audience']) || data.audience == 'researcher' || data.audience == 'senior_researcher')
         && data.title is string
         && data.title.size() > 0
         && data.title.size() < 200

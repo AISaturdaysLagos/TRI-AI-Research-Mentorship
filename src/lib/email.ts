@@ -246,6 +246,49 @@ export function charterRequestEmail(input: { title: string; parties: EmailAddres
   return introductionEmail({ ...input, scoping: "" });
 }
 
+export function researcherOnboardingEmail(input: {
+  researcher: EmailAddress;
+  title: string;
+  when: string;
+  calendarLink: string;
+}): EmailDraft {
+  const params = new URLSearchParams({
+    mode: "create",
+    role: "researcher",
+    email: input.researcher.email,
+    name: input.researcher.name,
+  });
+  const signup = `${programmeUrl}#/login?${params.toString()}`;
+  const profile = `${programmeUrl}#/account`;
+  const proposal = `${programmeUrl}#/apply/researcher`;
+  return {
+    to: [input.researcher],
+    cc: [],
+    subject: "Join the TRI AI Research Mentorship Programme",
+    attachments: [],
+    body: letter([
+      hello([input.researcher]),
+      "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher.",
+      "Create your account on the live programme:",
+      signup,
+      "How to join:",
+      "1. Open that link.",
+      "2. Choose Create an account, or Continue with Google.",
+      "3. Choose Researcher.",
+      `4. Complete your profile. You can save it before you submit a proposal: ${profile}`,
+      `5. When you are ready, start a proposal: ${proposal}`,
+      "If you already have an account, sign in with it and open the same profile page.",
+      "You can look around first on the programme demo. Sample accounts are on the sign-in page. The demo is separate from the live programme, so a demo sign-in does not create your live account:",
+      demoUrl,
+      `We have set one onboarding meeting for everyone invited: ${input.title}.`,
+      input.when,
+      "You are on the Google Calendar event. It already includes the meeting:",
+      input.calendarLink,
+      "Please tell us if you can attend.",
+    ]),
+  };
+}
+
 export function seniorOnboardingEmail(input: {
   senior: EmailAddress;
   title: string;

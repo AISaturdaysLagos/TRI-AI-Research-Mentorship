@@ -2,10 +2,13 @@ import { Timestamp, collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc
 import { firestore } from "./firebase";
 import { PROGRAMME_ZONE } from "./timezones";
 
+export type OnboardingAudience = "researcher" | "senior_researcher";
+
 export type OnboardingGuest = { name: string; email: string };
 
 export type OnboardingMeeting = {
   id: string;
+  audience: OnboardingAudience;
   title: string;
   startsAt: Date;
   endsAt: Date;
@@ -35,7 +38,11 @@ function asGuests(value: unknown): OnboardingGuest[] {
   });
 }
 
-export async function listOnboardingMeetings() {
+function asAudience(value: unknown): OnboardingAudience {
+  return value === "researcher" ? "researcher" : "senior_researcher";
+}
+
+export async function listOnboardingMeetings(audience: OnboardingAudience) {
   const db = firestore();
   if (!db) return [];
   const snapshot = await getDocs(collection(db, "onboardingMeetings"));
@@ -46,7 +53,8 @@ export async function listOnboardingMeetings() {
       const endsAt = asDate(data.endsAt);
       return {
         id: item.id,
-        title: String(data.title || "Senior Researcher onboarding"),
+        audience: asAudience(data.audience),
+        title: String(data.title || "Onboarding"),
         startsAt,
         endsAt,
         meetingLink: String(data.meetingLink || ""),
@@ -55,12 +63,13 @@ export async function listOnboardingMeetings() {
         guests: asGuests(data.guests),
       } satisfies OnboardingMeeting;
     })
-    .filter((meeting) => !Number.isNaN(meeting.startsAt.getTime()))
+    .filter((meeting) => meeting.audience === audience && !Number.isNaN(meeting.startsAt.getTime()))
     .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 }
 
 export async function saveOnboardingMeeting(input: {
   id?: string;
+  audience: OnboardingAudience;
   title: string;
   startsAt: Date;
   endsAt: Date;
@@ -75,6 +84,7 @@ export async function saveOnboardingMeeting(input: {
   const ref = input.id ? doc(db, "onboardingMeetings", input.id) : doc(collection(db, "onboardingMeetings"));
   const guests = input.guests.map((guest) => ({ name: guest.name.trim(), email: guest.email.trim() }));
   const shared = {
+    audience: input.audience,
     title: input.title.trim(),
     startsAt: Timestamp.fromDate(input.startsAt),
     endsAt: Timestamp.fromDate(input.endsAt),

@@ -1,6 +1,6 @@
 import { FormEvent, Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { CloseButton } from "../components/CloseButton";
-import { InviteSeniorResearchers } from "./AdminOnboarding";
+import { InviteResearchers, InviteSeniorResearchers } from "./AdminOnboarding";
 import { EmailSupport } from "../components/EmailSupport";
 import { Loader } from "../components/Loader";
 import { ResearcherProfileFields } from "../components/ResearcherProfileFields";
@@ -332,8 +332,14 @@ export function AdminResearchersPage() {
     <div className="directory">
       <div className="directory-intro">
         <h2>Researchers</h2>
-        <p className="quiet">Search, filter, and update Researcher profiles across the programme.</p>
+        <p className="quiet">Invite Researchers, then search, filter, and update their profiles.</p>
       </div>
+      <details className="fold">
+        <summary>Invite Researchers</summary>
+        <div className="fold-body">
+          <InviteResearchers />
+        </div>
+      </details>
       {error ? <p className="error">{error}</p> : null}
       {notice ? <p className="notice">{notice}</p> : null}
       <DirectoryToolbar
