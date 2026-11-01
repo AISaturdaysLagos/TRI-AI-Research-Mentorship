@@ -4,7 +4,9 @@ import { PROGRAMME_ZONE } from "./timezones";
 
 export type OnboardingAudience = "researcher" | "senior_researcher";
 
-export type OnboardingGuest = { name: string; email: string };
+export type ResearcherRoute = "proposal" | "award";
+
+export type OnboardingGuest = { name: string; email: string; route?: ResearcherRoute };
 
 export type OnboardingMeeting = {
   id: string;
@@ -30,11 +32,12 @@ function asGuests(value: unknown): OnboardingGuest[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
-    const row = item as { name?: unknown; email?: unknown };
+    const row = item as { name?: unknown; email?: unknown; route?: unknown };
     const name = typeof row.name === "string" ? row.name.trim() : "";
     const email = typeof row.email === "string" ? row.email.trim() : "";
     if (!name && !email) return [];
-    return [{ name, email }];
+    const route = row.route === "award" || row.route === "proposal" ? row.route : undefined;
+    return [{ name, email, ...(route ? { route } : {}) }];
   });
 }
 
@@ -82,7 +85,14 @@ export async function saveOnboardingMeeting(input: {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
   const ref = input.id ? doc(db, "onboardingMeetings", input.id) : doc(collection(db, "onboardingMeetings"));
-  const guests = input.guests.map((guest) => ({ name: guest.name.trim(), email: guest.email.trim() }));
+  const guests = input.guests.map((guest) => {
+    const row: { name: string; email: string; route?: ResearcherRoute } = {
+      name: guest.name.trim(),
+      email: guest.email.trim(),
+    };
+    if (guest.route === "proposal" || guest.route === "award") row.route = guest.route;
+    return row;
+  });
   const shared = {
     audience: input.audience,
     title: input.title.trim(),

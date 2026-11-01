@@ -248,6 +248,7 @@ export function charterRequestEmail(input: { title: string; parties: EmailAddres
 
 export function researcherOnboardingEmail(input: {
   researcher: EmailAddress;
+  route: "proposal" | "award";
   title: string;
   when: string;
   calendarLink: string;
@@ -261,25 +262,31 @@ export function researcherOnboardingEmail(input: {
   const signup = `${programmeUrl}#/login?${params.toString()}`;
   const profile = `${programmeUrl}#/account`;
   const proposal = `${programmeUrl}#/apply/researcher`;
+  const award = input.route === "award";
+  const steps = [
+    "How to join:",
+    "1. Open that link.",
+    "2. Choose Create an account, or Continue with Google.",
+    "3. Choose Researcher.",
+    award
+      ? `4. Complete your profile: ${profile}`
+      : `4. Complete your profile. You can save it before you submit a proposal: ${profile}`,
+  ];
+  if (!award) steps.push(`5. When you are ready, start a proposal: ${proposal}`);
   return {
     to: [input.researcher],
     cc: [],
-    subject: "Join the TRI AI Research Mentorship Programme",
+    subject: award ? "Join the TRI AI Saturdays Research Award" : "Join the TRI AI Research Mentorship Programme",
     attachments: [],
     body: letter([
       hello([input.researcher]),
-      "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher.",
+      award
+        ? "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher on a TRI AI Saturdays Research Award."
+        : "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher. You will submit a Direct Proposal for TRI AI to review.",
       "Create your account on the live programme:",
       signup,
-      "How to join:",
-      "1. Open that link.",
-      "2. Choose Create an account, or Continue with Google.",
-      "3. Choose Researcher.",
-      `4. Complete your profile. You can save it before you submit a proposal: ${profile}`,
-      `5. When you are ready, start a proposal: ${proposal}`,
+      ...steps,
       "If you already have an account, sign in with it and open the same profile page.",
-      "You can look around first on the programme demo. Sample accounts are on the sign-in page. The demo is separate from the live programme, so a demo sign-in does not create your live account:",
-      demoUrl,
       `We have set one onboarding meeting for everyone invited: ${input.title}.`,
       input.when,
       "You are on the Google Calendar event. It already includes the meeting:",

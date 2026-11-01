@@ -951,14 +951,15 @@ service cloud.firestore {
     }
 
     function onboardingGuest(person) {
-      return person.keys().hasOnly(['name', 'email'])
+      return person.keys().hasOnly(['name', 'email', 'route'])
         && person.name is string
         && person.name.size() > 1
         && person.name.size() < 120
         && person.email is string
         && person.email.size() > 5
         && person.email.size() < 200
-        && person.email.matches('.*@.*\\..*');
+        && person.email.matches('.*@.*\\..*')
+        && (!person.keys().hasAny(['route']) || person.route == 'proposal' || person.route == 'award');
     }
 
     function onboardingGuests(list) {

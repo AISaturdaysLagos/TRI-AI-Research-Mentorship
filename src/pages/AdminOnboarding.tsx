@@ -11,6 +11,7 @@ import {
   type OnboardingAudience,
   type OnboardingGuest,
   type OnboardingMeeting,
+  type ResearcherRoute,
 } from "../lib/onboarding";
 import { PROGRAMME_ZONE, formatZonedSpan, zonedDateAndTime, zonedWallTime } from "../lib/timezones";
 
@@ -44,6 +45,22 @@ function blankGuest(): OnboardingGuest {
   return { name: "", email: "" };
 }
 
+function routeLabel(route: ResearcherRoute | undefined) {
+  if (route === "award") return "TRI AI Saturdays Research Award";
+  if (route === "proposal") return "Direct Proposal";
+  return "";
+}
+
+function routeSummary(guests: OnboardingGuest[]) {
+  const proposal = guests.filter((guest) => guest.route === "proposal").length;
+  const award = guests.filter((guest) => guest.route === "award").length;
+  const parts = [
+    proposal === 1 ? "1 Direct Proposal" : proposal > 1 ? `${proposal} Direct Proposals` : "",
+    award === 1 ? "1 TRI AI Saturdays Research Award" : award > 1 ? `${award} TRI AI Saturdays Research Award` : "",
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
 function openingChoice(): TimeChoice {
   const opening = nextSaturdayAtFourWat();
   return { date: opening.date, start: opening.start, end: opening.end, zone: PROGRAMME_ZONE };
@@ -72,7 +89,7 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
   const [meetings, setMeetings] = useState<OnboardingMeeting[]>([]);
   const [editingId, setEditingId] = useState("");
   const [confirmingId, setConfirmingId] = useState("");
-  const [drafts, setDrafts] = useState<EmailDraft[]>([]);
+  const [drafts, setDrafts] = useState<{ draft: EmailDraft; routeLabel: string }[]>([]);
   const [calendarHref, setCalendarHref] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -149,7 +166,11 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
     setError("");
     setMessage("");
     const people = guests
-      .map((guest) => ({ name: guest.name.trim(), email: guest.email.trim() }))
+      .map((guest) => ({
+        name: guest.name.trim(),
+        email: guest.email.trim(),
+        ...(guest.route ? { route: guest.route } : {}),
+      }))
       .filter((guest) => guest.name || guest.email);
     if (people.length === 0) {
       setError(`Add at least one ${copy.person}.`);
@@ -157,6 +178,10 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
     }
     if (people.some((guest) => !guest.name || !guest.email.includes("@"))) {
       setError(`Each ${copy.person} needs a name and an email address.`);
+      return;
+    }
+    if (audience === "researcher" && people.some((guest) => guest.route !== "proposal" && guest.route !== "award")) {
+      setError("Choose Direct Proposal or TRI AI Saturdays Research Award for each Researcher.");
       return;
     }
     const emails = new Set<string>();
@@ -237,21 +262,24 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
       setEditingId(id);
       const span = formatZonedSpan(startsAt, endsAt, when.zone);
       setDrafts(
-        people.map((guest) =>
-          audience === "researcher"
-            ? researcherOnboardingEmail({
-                researcher: named(guest.name, guest.email),
-                title: meetingTitle,
-                when: span,
-                calendarLink: created.link,
-              })
-            : seniorOnboardingEmail({
-                senior: named(guest.name, guest.email),
-                title: meetingTitle,
-                when: span,
-                calendarLink: created.link,
-              }),
-        ),
+        people.map((guest) => ({
+          routeLabel: routeLabel(guest.route),
+          draft:
+            audience === "researcher"
+              ? researcherOnboardingEmail({
+                  researcher: named(guest.name, guest.email),
+                  route: guest.route === "award" ? "award" : "proposal",
+                  title: meetingTitle,
+                  when: span,
+                  calendarLink: created.link,
+                })
+              : seniorOnboardingEmail({
+                  senior: named(guest.name, guest.email),
+                  title: meetingTitle,
+                  when: span,
+                  calendarLink: created.link,
+                }),
+        })),
       );
       setMessage(
         existing
@@ -274,6 +302,9 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
     <div className="invite-panel">
       <p className="quiet">
         Add one or more {copy.people}. You are added to the same Google Calendar event, and that event includes the meeting. Saved meetings stay here, so you can change the time, add another {copy.person}, or delete the meeting. Add to Google Calendar opens the event. Each email opens in your email app with the calendar link.
+        {audience === "researcher"
+          ? " Choose Direct Proposal or TRI AI Saturdays Research Award for each Researcher. That sets their email."
+          : ""}
       </p>
       <div>
         <h3>Saved meetings</h3>
@@ -290,6 +321,7 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
                   <br />
                   <span className="quiet">
                     {meeting.guests.length === 1 ? `1 ${copy.person}` : `${meeting.guests.length} ${copy.people}`}
+                    {audience === "researcher" && routeSummary(meeting.guests) ? `. ${routeSummary(meeting.guests)}` : ""}
                   </span>
                 </p>
                 <div className="actions">
@@ -357,6 +389,31 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
                   />
                 </label>
               </div>
+              {audience === "researcher" ? (
+                <fieldset className="role-pick">
+                  <legend className="sr-only">Route for {guest.name || `Researcher ${index + 1}`}</legend>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={guest.route === "proposal"}
+                    className={guest.route === "proposal" ? "is-selected" : ""}
+                    onClick={() => updateGuest(index, { route: "proposal" })}
+                  >
+                    <strong>Direct Proposal</strong>
+                    <p className="quiet">Create a profile, then submit a proposal.</p>
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={guest.route === "award"}
+                    className={guest.route === "award" ? "is-selected" : ""}
+                    onClick={() => updateGuest(index, { route: "award" })}
+                  >
+                    <strong>TRI AI Saturdays Research Award</strong>
+                    <p className="quiet">Create a profile.</p>
+                  </button>
+                </fieldset>
+              ) : null}
               {guests.length > 1 ? (
                 <button
                   className="btn btn-ghost btn-compact"
@@ -387,10 +444,16 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
       </form>
       {drafts.length > 0 ? (
         <ul className="invite-emails">
-          {drafts.map((draft) => (
+          {drafts.map(({ draft, routeLabel: label }) => (
             <li key={draft.to[0]?.email}>
               <p>
                 <strong>{draft.to[0]?.name}</strong> {draft.to[0]?.email}
+                {label ? (
+                  <>
+                    <br />
+                    <span className="quiet">{label}</span>
+                  </>
+                ) : null}
               </p>
               <button className="btn btn-ghost btn-compact" type="button" onClick={() => void openLocalEmail(draft, { client: true })}>
                 Open email
