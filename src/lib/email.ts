@@ -276,13 +276,20 @@ export function researcherOnboardingEmail(input: {
   return {
     to: [input.researcher],
     cc: [],
-    subject: award ? "Join the TRI AI Saturdays Research Award" : "Join the TRI AI Research Mentorship Programme",
+    subject: award ? "Welcome to the TRI AI Research Mentorship Programme" : "Join the TRI AI Research Mentorship Programme",
     attachments: [],
     body: letter([
       hello([input.researcher]),
-      award
-        ? "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher on a TRI AI Saturdays Research Award."
-        : "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher. You will submit a Direct Proposal for TRI AI to review.",
+      ...(award
+        ? [
+            "It is a pleasure to welcome you to the TRI AI Research Mentorship Programme.",
+            "Congratulations on the strength of your work through the TRI AI Saturdays Training Programme. You and your team have done excellent work, and that achievement brings you here.",
+            "This platform is the home of your research mentorship. You will use it to create your Researcher profile, meet TRI AI at your onboarding meeting, and then carry the project with your Senior Researcher.",
+            "You will be matched with a Senior Researcher, who will mentor your research. The Senior Researchers are already on this platform. You are joining as a Researcher on a TRI AI Saturdays Research Award.",
+          ]
+        : [
+            "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher. You will submit a Direct Proposal for TRI AI to review.",
+          ]),
       "Create your account on the live programme:",
       signup,
       ...steps,
