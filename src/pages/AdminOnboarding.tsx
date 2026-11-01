@@ -14,8 +14,6 @@ import {
 } from "../lib/onboarding";
 import { PROGRAMME_ZONE, formatZonedSpan, zonedDateAndTime, zonedWallTime } from "../lib/timezones";
 
-const MAX_GUESTS = 8;
-
 const INVITE_COPY: Record<
   OnboardingAudience,
   { person: string; people: string; title: string; details: string }
@@ -370,13 +368,9 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
               ) : null}
             </div>
           ))}
-          {guests.length < MAX_GUESTS ? (
-            <button className="btn btn-ghost btn-compact" type="button" onClick={() => setGuests((current) => [...current, blankGuest()])}>
-              Add another {copy.person}
-            </button>
-          ) : (
-            <p className="quiet">Eight {copy.people} can share one onboarding meeting.</p>
-          )}
+          <button className="btn btn-ghost btn-compact" type="button" onClick={() => setGuests((current) => [...current, blankGuest()])}>
+            Add another {copy.person}
+          </button>
         </fieldset>
         {error ? <p className="error">{error}</p> : null}
         {message ? <p className="notice">{message}</p> : null}

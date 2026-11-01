@@ -964,7 +964,6 @@ service cloud.firestore {
     function onboardingGuests(list) {
       return list is list
         && list.size() > 0
-        && list.size() < 9
         && onboardingGuest(list[0])
         && (list.size() < 2 || onboardingGuest(list[1]))
         && (list.size() < 3 || onboardingGuest(list[2]))
