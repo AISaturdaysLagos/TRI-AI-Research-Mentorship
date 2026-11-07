@@ -786,6 +786,7 @@ service cloud.firestore {
     function seniorMayCreateMeeting() {
       let data = request.resource.data;
       return role() == 'senior_researcher'
+        && data.seniorResearchers.size() > 0
         && data.seniorResearchers[0].uid == request.auth.uid
         && request.auth.uid in data.participantIds
         && (data.kind != 'project' || seniorOnActiveProject())
@@ -935,17 +936,71 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    function introductionCreate(id) {
+      let data = request.resource.data;
+      let invitedResearchers = data.get('invitedResearchers', []);
+      let invitedSeniors = data.get('invitedSeniors', []);
+      return (isAdmin() || seniorMayCreateMeeting())
+        && data.keys().hasOnly([
+          'kind', 'title', 'proposalId', 'projectId', 'startsAt', 'endsAt', 'note',
+          'participantIds', 'researchers', 'seniorResearchers', 'invitedResearchers', 'invitedSeniors', 'admins',
+          'calendarEventId', 'calendarLink', 'status', 'createdBy', 'createdAt', 'updatedAt'
+        ])
+        && data.kind == 'introduction'
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() < 200
+        && data.proposalId == ''
+        && data.projectId is string
+        && data.projectId.size() > 0
+        && data.projectId.size() < 120
+        && data.startsAt is timestamp
+        && data.endsAt is timestamp
+        && data.endsAt > data.startsAt
+        && data.note is string
+        && data.note.size() < 1000
+        && data.participantIds is list
+        && data.participantIds.size() > 0
+        && data.participantIds.size() < 40
+        && data.researchers is list
+        && data.researchers.size() < 40
+        && data.seniorResearchers is list
+        && data.seniorResearchers.size() < 40
+        && invitedResearchers is list
+        && invitedResearchers.size() < 40
+        && invitedSeniors is list
+        && invitedSeniors.size() < 40
+        && (data.researchers.size() > 0 || invitedResearchers.size() > 0)
+        && (data.seniorResearchers.size() > 0 || invitedSeniors.size() > 0)
+        && data.keys().hasAll(['admins'])
+        && data.admins is list
+        && data.admins.size() > 0
+        && data.admins.size() < 4
+        && data.calendarEventId is string
+        && data.calendarEventId.size() < 200
+        && data.calendarLink is string
+        && data.calendarLink.size() < 1500
+        && (data.calendarLink == ''
+          || data.calendarLink.matches('https://calendar\\.google\\.com/.*')
+          || data.calendarLink.matches('https://www\\.google\\.com/calendar/.*'))
+        && data.status == 'scheduled'
+        && data.createdBy == request.auth.uid
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && introductionClaimed(data.projectId, id);
+    }
+
     match /meetings/{id} {
       allow read: if isAdmin()
         || (signedIn() && request.auth.uid in resource.data.participantIds);
-      allow create: if validMeeting(request.resource.data)
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.status == 'scheduled'
-        && (isAdmin() || seniorMayCreateMeeting())
-        && (request.resource.data.kind != 'scoping' || request.resource.data.keys().hasAll(['admins']))
-        && (request.resource.data.kind != 'scoping' || scopingClaimed(scopingSlotId(request.resource.data), id))
-        && (request.resource.data.kind != 'introduction' || request.resource.data.keys().hasAll(['admins']))
-        && (request.resource.data.kind != 'introduction' || introductionClaimed(request.resource.data.projectId, id));
+      allow create: if request.resource.data.kind == 'introduction'
+        ? introductionCreate(id)
+        : (validMeeting(request.resource.data)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.status == 'scheduled'
+          && (isAdmin() || seniorMayCreateMeeting())
+          && (request.resource.data.kind != 'scoping' || request.resource.data.keys().hasAll(['admins']))
+          && (request.resource.data.kind != 'scoping' || scopingClaimed(scopingSlotId(request.resource.data), id)));
       allow update: if validMeeting(request.resource.data)
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([

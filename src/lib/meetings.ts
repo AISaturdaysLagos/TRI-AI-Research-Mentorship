@@ -351,7 +351,7 @@ export async function saveMeeting(input: {
     calendarEventId: input.calendarEventId,
     calendarLink: input.calendarLink,
     status: "scheduled",
-    createdBy: input.createdBy,
+    createdBy: uid,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
