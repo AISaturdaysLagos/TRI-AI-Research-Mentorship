@@ -429,7 +429,7 @@ export function AdminMeetingsPage() {
       if (invite.projectId !== project.id || invite.status !== "open") continue;
       if (invite.role !== "researcher" && invite.role !== "senior_researcher") continue;
       const email = String(invite.guestEmail || "").trim().toLowerCase();
-      const name = String(invite.guestName || "").trim();
+      const name = String(invite.guestName || "").trim().replace(/\s+/g, " ");
       if (!name || !GUEST_EMAIL.test(email)) continue;
       const account = directory.find((item) => item.email.toLowerCase() === email && item.role !== "admin");
       if (account) {
