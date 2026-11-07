@@ -32,6 +32,8 @@ export function meetingReplyPhrase(response: string | undefined) {
   return "has not replied";
 }
 
+export type MeetingGuest = { name: string; email: string };
+
 export type MeetingRow = {
   id: string;
   kind?: MeetingKind;
@@ -44,6 +46,8 @@ export type MeetingRow = {
   participantIds?: string[];
   researchers?: MeetingPerson[];
   seniorResearchers?: MeetingPerson[];
+  invitedResearchers?: MeetingGuest[];
+  invitedSeniors?: MeetingGuest[];
   admins?: MeetingPerson[];
   calendarEventId?: string;
   calendarLink?: string;
@@ -279,6 +283,8 @@ export async function saveMeeting(input: {
   note: string;
   researchers: MeetingPerson[];
   seniorResearchers: MeetingPerson[];
+  invitedResearchers?: MeetingGuest[];
+  invitedSeniors?: MeetingGuest[];
   admins?: MeetingPerson[];
   calendarEventId: string;
   calendarLink: string;
@@ -309,7 +315,9 @@ export async function saveMeeting(input: {
   const withAdmins = meetingIncludesAdmins(input.kind);
   const admins = withAdmins ? (input.admins ?? []).slice(0, 3) : [];
   const participantIds = [
-    ...new Set([...input.researchers, ...input.seniorResearchers, ...admins].map((person) => person.uid)),
+    ...new Set(
+      [...input.researchers, ...input.seniorResearchers, ...admins].map((person) => person.uid).filter(Boolean),
+    ),
   ];
   const uid = firebaseAuth()?.currentUser?.uid || input.createdBy;
   const scopingSlotId = input.proposalId || input.projectId;
@@ -333,6 +341,12 @@ export async function saveMeeting(input: {
     participantIds,
     researchers: input.researchers,
     seniorResearchers: input.seniorResearchers,
+    ...(input.kind === "introduction"
+      ? {
+          invitedResearchers: (input.invitedResearchers ?? []).slice(0, 39),
+          invitedSeniors: (input.invitedSeniors ?? []).slice(0, 39),
+        }
+      : {}),
     ...(withAdmins ? { admins } : {}),
     calendarEventId: input.calendarEventId,
     calendarLink: input.calendarLink,

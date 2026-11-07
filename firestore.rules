@@ -675,10 +675,74 @@ service cloud.firestore {
           || link.matches('https://www\\.google\\.com/calendar/.*'));
     }
 
+    function emailGuestOk(person) {
+      return person.keys().hasOnly(['name', 'email'])
+        && person.name is string
+        && person.name.size() > 0
+        && person.name.size() < 120
+        && person.email is string
+        && person.email.size() < 200
+        && person.email.matches('^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$');
+    }
+
+    function emailGuests(list) {
+      return list is list
+        && list.size() < 40
+        && (list.size() < 1 || emailGuestOk(list[0]))
+        && (list.size() < 2 || emailGuestOk(list[1]))
+        && (list.size() < 3 || emailGuestOk(list[2]))
+        && (list.size() < 4 || emailGuestOk(list[3]))
+        && (list.size() < 5 || emailGuestOk(list[4]))
+        && (list.size() < 6 || emailGuestOk(list[5]))
+        && (list.size() < 7 || emailGuestOk(list[6]))
+        && (list.size() < 8 || emailGuestOk(list[7]));
+    }
+
+    function accountPeople(list) {
+      return list is list
+        && list.size() < 40
+        && (list.size() < 1 || personOk(list[0]))
+        && (list.size() < 2 || personOk(list[1]))
+        && (list.size() < 3 || personOk(list[2]))
+        && (list.size() < 4 || personOk(list[3]))
+        && (list.size() < 5 || personOk(list[4]))
+        && (list.size() < 6 || personOk(list[5]))
+        && (list.size() < 7 || personOk(list[6]))
+        && (list.size() < 8 || personOk(list[7]));
+    }
+
+    function introductionIds(list) {
+      return list is list
+        && list.size() > 0
+        && list.size() < 40
+        && list[0] is string
+        && list[0].size() > 0
+        && list[0].size() < 128
+        && (list.size() < 2 || (list[1] is string && list[1].size() < 128))
+        && (list.size() < 3 || (list[2] is string && list[2].size() < 128))
+        && (list.size() < 4 || (list[3] is string && list[3].size() < 128))
+        && (list.size() < 5 || (list[4] is string && list[4].size() < 128))
+        && (list.size() < 6 || (list[5] is string && list[5].size() < 128))
+        && (list.size() < 7 || (list[6] is string && list[6].size() < 128))
+        && (list.size() < 8 || (list[7] is string && list[7].size() < 128));
+    }
+
+    function introductionPeopleOk(data) {
+      let invitedResearchers = data.get('invitedResearchers', []);
+      let invitedSeniors = data.get('invitedSeniors', []);
+      return accountPeople(data.researchers)
+        && accountPeople(data.seniorResearchers)
+        && emailGuests(invitedResearchers)
+        && emailGuests(invitedSeniors)
+        && introductionIds(data.participantIds)
+        && (data.researchers.size() > 0 || invitedResearchers.size() > 0)
+        && (data.seniorResearchers.size() > 0 || invitedSeniors.size() > 0);
+    }
+
     function validMeeting(data) {
       return data.keys().hasOnly([
           'kind', 'title', 'proposalId', 'projectId', 'startsAt', 'endsAt', 'note',
-          'participantIds', 'researchers', 'seniorResearchers', 'admins', 'calendarEventId', 'calendarLink',
+          'participantIds', 'researchers', 'seniorResearchers', 'invitedResearchers', 'invitedSeniors', 'admins', 'calendarEventId', 'calendarLink',
           'status', 'createdBy', 'createdAt', 'updatedAt'
         ])
         && data.kind in ['scoping', 'introduction', 'project']
@@ -697,9 +761,9 @@ service cloud.firestore {
         && data.endsAt > data.startsAt
         && data.note is string
         && data.note.size() < 1000
-        && idListOk(data.participantIds)
-        && peopleOk(data.researchers)
-        && peopleOk(data.seniorResearchers)
+        && (data.kind == 'introduction'
+          ? introductionPeopleOk(data)
+          : (idListOk(data.participantIds) && peopleOk(data.researchers) && peopleOk(data.seniorResearchers)))
         && adminsJoined(data)
         && data.calendarEventId is string
         && data.calendarEventId.size() < 200
