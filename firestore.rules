@@ -191,6 +191,27 @@ service cloud.firestore {
         && request.resource.data.get('year', '').size() < 8;
     }
 
+    function projectDetailsUpdate(projectId) {
+      return projectMember(projectId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'summary', 'researchArea', 'question', 'contribution', 'year', 'updatedAt'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() < 180
+        && request.resource.data.summary is string
+        && request.resource.data.summary.size() < 1200
+        && request.resource.data.researchArea is string
+        && request.resource.data.researchArea.size() < 160
+        && request.resource.data.question is string
+        && request.resource.data.question.size() < 800
+        && request.resource.data.contribution is string
+        && request.resource.data.contribution.size() < 800
+        && request.resource.data.year is string
+        && request.resource.data.year.size() < 8
+        && request.resource.data.updatedAt is timestamp;
+    }
+
     function driveLayoutUpdate(projectId) {
       return projectMember(projectId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -237,7 +258,8 @@ service cloud.firestore {
             (role() == 'researcher' && addedPerson('researchers') && awardJoinOk(id))
             || (role() == 'senior_researcher' && addedPerson('seniorResearchers'))
           ))
-        || driveLayoutUpdate(id);
+        || driveLayoutUpdate(id)
+        || projectDetailsUpdate(id);
 
       match /charter/{docId} {
         allow read: if projectMember(id);
@@ -659,7 +681,7 @@ service cloud.firestore {
           'participantIds', 'researchers', 'seniorResearchers', 'admins', 'calendarEventId', 'calendarLink',
           'status', 'createdBy', 'createdAt', 'updatedAt'
         ])
-        && data.kind in ['scoping', 'project']
+        && data.kind in ['scoping', 'introduction', 'project']
         && data.title is string
         && data.title.size() > 0
         && data.title.size() < 200
@@ -707,12 +729,23 @@ service cloud.firestore {
       return project.status == 'active' && request.auth.uid in project.participantIds;
     }
 
+    function seniorOnLiveProject() {
+      let projectId = request.resource.data.projectId;
+      let path = /databases/$(database)/documents/projects/$(projectId);
+      return projectId is string
+        && projectId.size() > 0
+        && exists(path)
+        && get(path).data.status in ['scoping', 'active', 'internal_review']
+        && request.auth.uid in get(path).data.participantIds;
+    }
+
     function seniorMayCreateMeeting() {
       let data = request.resource.data;
       return role() == 'senior_researcher'
         && data.seniorResearchers[0].uid == request.auth.uid
         && request.auth.uid in data.participantIds
-        && (data.kind != 'project' || seniorOnActiveProject());
+        && (data.kind != 'project' || seniorOnActiveProject())
+        && (data.kind != 'introduction' || seniorOnLiveProject());
     }
 
     function uidInSeniorResearchers() {
@@ -808,6 +841,48 @@ service cloud.firestore {
       return !exists(path) ? true : get(path).data.get('status', '') == 'cancelled';
     }
 
+    function liveProject(projectId) {
+      let path = /databases/$(database)/documents/projects/$(projectId);
+      return projectId.size() > 0
+        && exists(path)
+        && get(path).data.status in ['scoping', 'active', 'internal_review'];
+    }
+
+    function mayClaimIntroductionSlot(projectId) {
+      let path = /databases/$(database)/documents/projects/$(projectId);
+      return liveProject(projectId)
+        && (isAdmin()
+          || (role() == 'senior_researcher' && request.auth.uid in get(path).data.participantIds));
+    }
+
+    function introductionClaimed(projectId, meetingId) {
+      let path = /databases/$(database)/documents/introductionSlots/$(projectId);
+      return projectId.size() > 0
+        && exists(path)
+        && get(path).data.meetingId == meetingId
+        && get(path).data.claimedBy == request.auth.uid;
+    }
+
+    function introductionSlotWrite(projectId) {
+      let data = request.resource.data;
+      return mayClaimIntroductionSlot(projectId)
+        && data.keys().hasOnly(['meetingId', 'projectId', 'claimedBy', 'updatedAt'])
+        && data.projectId == projectId
+        && data.meetingId is string
+        && data.meetingId.size() > 0
+        && data.meetingId.size() < 120
+        && data.claimedBy == request.auth.uid
+        && data.updatedAt is timestamp;
+    }
+
+    match /introductionSlots/{projectId} {
+      allow get: if isAdmin() || role() == 'senior_researcher';
+      allow list: if isAdmin();
+      allow create: if introductionSlotWrite(projectId);
+      allow update: if introductionSlotWrite(projectId) && priorMeetingClosed();
+      allow delete: if false;
+    }
+
     match /scopingSlots/{proposalId} {
       allow get: if isAdmin() || role() == 'senior_researcher';
       allow list: if isAdmin();
@@ -824,7 +899,9 @@ service cloud.firestore {
         && request.resource.data.status == 'scheduled'
         && (isAdmin() || seniorMayCreateMeeting())
         && (request.resource.data.kind != 'scoping' || request.resource.data.keys().hasAll(['admins']))
-        && (request.resource.data.kind != 'scoping' || scopingClaimed(scopingSlotId(request.resource.data), id));
+        && (request.resource.data.kind != 'scoping' || scopingClaimed(scopingSlotId(request.resource.data), id))
+        && (request.resource.data.kind != 'introduction' || request.resource.data.keys().hasAll(['admins']))
+        && (request.resource.data.kind != 'introduction' || introductionClaimed(request.resource.data.projectId, id));
       allow update: if validMeeting(request.resource.data)
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([

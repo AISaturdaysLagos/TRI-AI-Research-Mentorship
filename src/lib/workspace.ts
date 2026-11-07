@@ -204,12 +204,42 @@ export async function saveProjectDrive(
   invalidateReads();
 }
 
+export type ProjectDetails = {
+  title: string;
+  summary: string;
+  researchArea: string;
+  question: string;
+  contribution: string;
+  year: string;
+};
+
+function projectDetailsFields(input: ProjectDetails) {
+  return {
+    title: clip(input.title, 179),
+    summary: clip(input.summary, 1000),
+    researchArea: clip(input.researchArea, 120),
+    question: clip(input.question, 700),
+    contribution: clip(input.contribution, 700),
+    year: clip(input.year, 4),
+  };
+}
+
+export async function saveProjectDetails(projectId: string, input: ProjectDetails) {
+  const db = dbOrThrow();
+  await setDoc(
+    doc(db, "projects", projectId),
+    {
+      ...projectDetailsFields(input),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+  invalidateReads();
+}
+
 export async function saveProjectOverview(
   projectId: string,
-  input: {
-    question: string;
-    contribution: string;
-    year: string;
+  input: ProjectDetails & {
     health: string;
     status: string;
     publicShowcase: boolean;
@@ -219,9 +249,7 @@ export async function saveProjectOverview(
   await setDoc(
     doc(db, "projects", projectId),
     {
-      question: clip(input.question, 700),
-      contribution: clip(input.contribution, 700),
-      year: clip(input.year, 4),
+      ...projectDetailsFields(input),
       health: input.health,
       status: input.status,
       publicShowcase: input.publicShowcase,

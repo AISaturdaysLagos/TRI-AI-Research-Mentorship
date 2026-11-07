@@ -4,9 +4,9 @@ import { Icon, Mark, type IconName } from "../components/Icon";
 import { ProjectBoard } from "../components/ProjectBoard";
 import { Loader } from "../components/Loader";
 import { CharterFields } from "../components/CharterFields";
-import { SearchSelect } from "../components/SearchSelect";
+import { SearchSelect, optionsFrom } from "../components/SearchSelect";
 import { HealthChoices, HealthMark, StatusChip } from "../components/StatusChip";
-import { projectTypeLabel } from "../types/domain";
+import { projectTypeLabel, RESEARCH_AREA_OPTIONS } from "../types/domain";
 import {
   blocksToMarkdown,
   charterBlocks,
@@ -46,6 +46,7 @@ import {
   listProgress,
   listResources,
   saveCharter,
+  saveProjectDetails,
   saveProjectOverview,
   setMilestoneStatus,
   setOutputPublic,
@@ -115,7 +116,17 @@ export function ProjectWorkspacePage() {
   const [updates, setUpdates] = useState<ProgressRecord[]>([]);
   const [resources, setResources] = useState<ResourceRecord[]>([]);
   const [outputs, setOutputs] = useState<OutputRecord[]>([]);
-  const [overview, setOverview] = useState({ question: "", contribution: "", year: "", health: "green", status: "scoping", publicShowcase: false });
+  const [overview, setOverview] = useState({
+    title: "",
+    summary: "",
+    researchArea: "",
+    question: "",
+    contribution: "",
+    year: "",
+    health: "green",
+    status: "scoping",
+    publicShowcase: false,
+  });
   const [milestone, setMilestone] = useState({ title: "", ownerName: "", due: "", evidence: "" });
   const [progress, setProgress] = useState({ period: "", changes: "", evidence: "", blockers: "", nextStep: "", triAction: "" });
   const [resource, setResource] = useState({ type: "compute", request: "" });
@@ -142,16 +153,25 @@ export function ProjectWorkspacePage() {
       if (uid) await saveCharter(source.id, charterPull.charter, uid).catch(() => undefined);
     }
     if (!overviewPull) return;
+    const summary = overviewPull.summary || source.summary || "";
     const question = overviewPull.question || source.question || "";
     const contribution = overviewPull.contribution || source.contribution || "";
     const year = overviewPull.year || source.year || "";
-    if (question === (source.question || "") && contribution === (source.contribution || "") && year === (source.year || "")) {
+    if (
+      summary === (source.summary || "") &&
+      question === (source.question || "") &&
+      contribution === (source.contribution || "") &&
+      year === (source.year || "")
+    ) {
       return;
     }
-    setProject((current) => (current ? { ...current, question, contribution, year } : current));
-    setOverview((current) => ({ ...current, question, contribution, year }));
+    setProject((current) => (current ? { ...current, summary, question, contribution, year } : current));
+    setOverview((current) => ({ ...current, summary, question, contribution, year }));
     if (!uid || profile?.role !== "admin") return;
     await saveProjectOverview(source.id, {
+      title: source.title || "",
+      summary,
+      researchArea: source.researchArea || "",
       question,
       contribution,
       year,
@@ -181,6 +201,9 @@ export function ProjectWorkspacePage() {
     }
     setProject(nextProject);
     setOverview({
+      title: nextProject.title || "",
+      summary: nextProject.summary || "",
+      researchArea: nextProject.researchArea || "",
       question: nextProject.question || "",
       contribution: nextProject.contribution || "",
       year: nextProject.year || "",
@@ -220,6 +243,7 @@ export function ProjectWorkspacePage() {
         name: "Project overview",
         markdown: blocksToMarkdown(overviewBlocks({
           title: nextProject.title || "Project",
+          summary: nextProject.summary,
           question: nextProject.question,
           contribution: nextProject.contribution,
           year: nextProject.year,
@@ -498,24 +522,72 @@ export function ProjectWorkspacePage() {
               <p className="quiet">{drive ? "Open the project folder." : "No project folder yet."}</p>
             </button>
           </div>
-          {admin ? (
-            <Fold title={<Mark name="overview">Edit overview</Mark>}>
+          {member ? (
+            <Fold title={<Mark name="overview">Edit title and description</Mark>}>
               <form
                 className="fields"
                 onSubmit={(event: FormEvent) => {
                   event.preventDefault();
+                  if (!overview.title.trim()) {
+                    setError("Add a project title.");
+                    return;
+                  }
+                  const details = {
+                    title: overview.title,
+                    summary: overview.summary,
+                    researchArea: overview.researchArea,
+                    question: overview.question,
+                    contribution: overview.contribution,
+                    year: overview.year,
+                  };
                   void run(
                     "overview",
-                    () => saveProjectOverview(project.id, overview),
-                    "Overview saved.",
+                    () =>
+                      admin
+                        ? saveProjectOverview(project.id, {
+                            ...details,
+                            health: overview.health,
+                            status: overview.status,
+                            publicShowcase: overview.publicShowcase,
+                          })
+                        : saveProjectDetails(project.id, details),
+                    "Project details saved.",
                     () => updateFiledDocument(
                       project.id,
                       "Project overview",
-                      overviewBlocks({ title: project.title || "Project", ...overview }),
+                      overviewBlocks({
+                        title: overview.title.trim() || "Project",
+                        summary: overview.summary,
+                        question: overview.question,
+                        contribution: overview.contribution,
+                        year: overview.year,
+                        health: admin ? overview.health : project.health,
+                        status: admin ? overview.status : project.status,
+                      }),
                     ),
                   );
                 }}
               >
+                <label>
+                  Title
+                  <input
+                    value={overview.title}
+                    required
+                    onChange={(event) => setOverview({ ...overview, title: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Summary
+                  <textarea value={overview.summary} onChange={(event) => setOverview({ ...overview, summary: event.target.value })} />
+                </label>
+                <SearchSelect
+                  label="Research area"
+                  options={optionsFrom(RESEARCH_AREA_OPTIONS)}
+                  value={overview.researchArea}
+                  onChange={(researchArea) => setOverview({ ...overview, researchArea })}
+                  allowCustom
+                  placeholder="Search research areas…"
+                />
                 <label>
                   Research question
                   <textarea value={overview.question} onChange={(event) => setOverview({ ...overview, question: event.target.value })} />
@@ -528,28 +600,32 @@ export function ProjectWorkspacePage() {
                   Year
                   <input value={overview.year} onChange={(event) => setOverview({ ...overview, year: event.target.value })} />
                 </label>
-                <label>
-                  Project health
-                  <HealthChoices value={overview.health} onChange={(health) => setOverview({ ...overview, health })} />
-                </label>
-                <SearchSelect
-                  label="Status"
-                  options={PROJECT_STATUSES.map(([value, label]) => ({ value, label }))}
-                  value={overview.status}
-                  onChange={(status) => setOverview({ ...overview, status })}
-                  placeholder="Project status…"
-                />
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={overview.publicShowcase}
-                    onChange={(event) => setOverview({ ...overview, publicShowcase: event.target.checked })}
-                  />
-                  <span>Keep this project on the public research page after it is no longer current.</span>
-                </label>
+                {admin ? (
+                  <>
+                    <label>
+                      Project health
+                      <HealthChoices value={overview.health} onChange={(health) => setOverview({ ...overview, health })} />
+                    </label>
+                    <SearchSelect
+                      label="Status"
+                      options={PROJECT_STATUSES.map(([value, label]) => ({ value, label }))}
+                      value={overview.status}
+                      onChange={(status) => setOverview({ ...overview, status })}
+                      placeholder="Project status…"
+                    />
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={overview.publicShowcase}
+                        onChange={(event) => setOverview({ ...overview, publicShowcase: event.target.checked })}
+                      />
+                      <span>Keep this project on the public research page after it is no longer current.</span>
+                    </label>
+                  </>
+                ) : null}
                 <div className="button-row">
                   <button className="btn btn-primary" type="submit" disabled={busy !== ""}>
-                    {busy === "overview" ? "Saving…" : "Save overview"}
+                    {busy === "overview" ? "Saving…" : "Save project"}
                   </button>
                 </div>
               </form>

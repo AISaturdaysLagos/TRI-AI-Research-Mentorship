@@ -406,13 +406,15 @@ export function meetingEmail(input: {
   when: string;
   attendees: EmailAddress[];
   scoping: boolean;
+  introductory?: boolean;
   from?: EmailAddress;
 }): EmailDraft {
   const mine = input.from?.name?.trim();
+  const kind = input.introductory ? "introductory meeting" : input.scoping ? "scoping meeting" : "project meeting";
   return {
     to: input.attendees,
     cc: [],
-    subject: `TRI AI ${input.scoping ? "scoping meeting" : "project meeting"} — ${input.title}`,
+    subject: `TRI AI ${kind} — ${input.title}`,
     attachments: [],
     body: letter(
       [

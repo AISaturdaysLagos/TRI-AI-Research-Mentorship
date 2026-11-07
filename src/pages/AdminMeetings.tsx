@@ -17,7 +17,10 @@ import {
   meetingIsArchived,
   meetingReplyPhrase,
   ensureScopingSlots,
+  introductionMeetingTaken,
   listMeetings,
+  meetingIncludesAdmins,
+  meetingKindLabel,
   saveMeeting,
   scopingMeetingTaken,
   scopingNeedsMatch,
@@ -143,7 +146,7 @@ function AdminMeetingCard({
   return (
     <article className="opportunity">
       <p className="mono">
-        {meeting.status === "cancelled" ? "Cancelled" : meeting.kind === "scoping" ? "New scoping meeting" : "Active project meeting"}
+        {meetingKindLabel(meeting)}
       </p>
       <h3>{meeting.title}</h3>
       <p>
@@ -315,6 +318,9 @@ export function AdminMeetingsPage() {
     matches.filter((item) => item.introduced && item.mentorId && item.proposalId).map((item) => item.proposalId),
   );
   const activeProjects = projects.filter((item) => item.status === "active");
+  const introductionProjects = projects.filter(
+    (item) => ["scoping", "active", "internal_review"].includes(item.status || "") && !introductionTaken(item.id),
+  );
   const awardScopingProjects = projects.filter(
     (item) => item.status === "scoping" && Boolean(item.awardId) && !scopingTaken(item.id),
   );
@@ -329,7 +335,14 @@ export function AdminMeetingsPage() {
   });
   const isAwardScoping =
     kind === "scoping" && projects.some((item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId));
-  const options = kind === "scoping" ? [...scopingProposals, ...awardScopingProjects] : activeProjects;
+  const options =
+    kind === "scoping" ? [...scopingProposals, ...awardScopingProjects] : kind === "introduction" ? introductionProjects : activeProjects;
+
+  function introductionTaken(id: string) {
+    return meetings.some(
+      (meeting) => meeting.kind === "introduction" && meeting.status !== "cancelled" && meeting.projectId === id,
+    );
+  }
 
   function scopingTaken(id: string) {
     return meetings.some(
@@ -392,7 +405,7 @@ export function AdminMeetingsPage() {
         "Scoping meeting"
       );
     }
-    return projects.find((item) => item.id === id)?.title || "Project meeting";
+    return projects.find((item) => item.id === id)?.title || (kind === "introduction" ? "Introductory meeting" : "Project meeting");
   }
 
   async function onSubmit(event: FormEvent) {
@@ -412,17 +425,16 @@ export function AdminMeetingsPage() {
     const seniorResearchers = candidates.filter(
       (person) => selected.includes(person.uid) && directory.find((item) => item.uid === person.uid)?.role === "senior_researcher",
     );
-    const programmeAdmins =
-      kind === "scoping"
-        ? directory
-            .filter((person) => person.role === "admin" && person.uid && person.name)
-            .filter(
-              (person) =>
-                !researchers.some((item) => item.uid === person.uid) &&
-                !seniorResearchers.some((item) => item.uid === person.uid),
-            )
-            .map((person) => ({ uid: person.uid, name: person.name || "TRI AI Admin", email: person.email }))
-        : [];
+    const programmeAdmins = meetingIncludesAdmins(kind)
+      ? directory
+          .filter((person) => person.role === "admin" && person.uid && person.name)
+          .filter(
+            (person) =>
+              !researchers.some((item) => item.uid === person.uid) &&
+              !seniorResearchers.some((item) => item.uid === person.uid),
+          )
+          .map((person) => ({ uid: person.uid, name: person.name || "TRI AI Admin", email: person.email }))
+      : [];
     if (kind === "scoping" && !isAwardScoping && !matchedProposalIds.has(recordId)) {
       setError(scopingNeedsMatch);
       return;
@@ -435,7 +447,7 @@ export function AdminMeetingsPage() {
       );
       return;
     }
-    if (kind === "scoping" && programmeAdmins.length === 0) {
+    if (meetingIncludesAdmins(kind) && programmeAdmins.length === 0) {
       setError("Add a TRI AI admin.");
       return;
     }
@@ -443,7 +455,16 @@ export function AdminMeetingsPage() {
       setError(scopingMeetingTaken);
       return;
     }
-    const subject = kind === "scoping" ? `Scoping meeting: ${titleFor(recordId)}` : `Project meeting: ${titleFor(recordId)}`;
+    if (kind === "introduction" && introductionTaken(recordId)) {
+      setError(introductionMeetingTaken);
+      return;
+    }
+    const subject =
+      kind === "scoping"
+        ? `Scoping meeting: ${titleFor(recordId)}`
+        : kind === "introduction"
+          ? `Introductory meeting: ${titleFor(recordId)}`
+          : `Project meeting: ${titleFor(recordId)}`;
     const details = note.trim() || "TRI AI Research Programme meeting.";
     const guests = [...researchers, ...seniorResearchers, ...programmeAdmins];
     const emails = guests.map((person) => person.email);
@@ -477,7 +498,7 @@ export function AdminMeetingsPage() {
         title: subject,
         proposalId: kind === "scoping" && !isAwardScoping ? recordId : "",
         projectId:
-          kind === "project" || isAwardScoping
+          kind === "project" || kind === "introduction" || isAwardScoping
             ? recordId
             : projects.find((item) => item.proposalId === recordId && item.status === "scoping")?.id || "",
         starts: startDate,
@@ -502,6 +523,7 @@ export function AdminMeetingsPage() {
           title: subject,
           when: formatMeetingWhen({ toDate: () => startDate }),
           scoping: kind === "scoping",
+          introductory: kind === "introduction",
           attendees: guests.map((person) => named(person.name, person.email)),
         }),
       );
@@ -553,12 +575,13 @@ export function AdminMeetingsPage() {
           <h2><Mark name="meeting">Create a meeting</Mark></h2>
         </div>
         <p className="quiet">
-          Set a scoping meeting for an introduced proposal or a TRI AI Saturdays Research Award project, or a meeting on an
+          Set an introductory meeting for a project, a scoping meeting for an introduced proposal or a TRI AI Saturdays Research Award project, or a meeting on an
           active project.
         </p>
         <SearchSelect
           label="Meeting"
           options={[
+            { value: "introduction", label: "Introductory meeting" },
             { value: "scoping", label: "New scoping meeting" },
             { value: "project", label: "Active project meeting" },
           ]}
@@ -570,14 +593,14 @@ export function AdminMeetingsPage() {
           placeholder="Meeting type…"
         />
         <SearchSelect
-          label={kind === "scoping" ? "Proposal or award project" : "Active project"}
+          label={kind === "scoping" ? "Proposal or award project" : kind === "introduction" ? "Project" : "Active project"}
           options={[
             { value: "", label: "Select" },
             ...options.map((item) => {
               const taken = kind === "scoping" && scopingTaken(item.id);
               const award = kind === "scoping" && "awardId" in item && Boolean((item as ProjectOption).awardId);
               const type =
-                kind === "project" || award ? projectTypeLabel(item as ProjectOption) : undefined;
+                kind === "project" || kind === "introduction" || award ? projectTypeLabel(item as ProjectOption) : undefined;
               return {
                 value: item.id,
                 label: item.title || "Untitled",
@@ -591,6 +614,9 @@ export function AdminMeetingsPage() {
           placeholder={kind === "scoping" ? "Search proposals or award projects…" : "Search projects…"}
           required
         />
+        {kind === "introduction" && introductionProjects.length === 0 ? (
+          <p className="quiet">Every current project already has an introductory meeting.</p>
+        ) : null}
         {kind === "scoping" && scopingProposals.length === 0 && awardScopingProjects.length === 0 ? (
           <p className="quiet">
             Introduce a Senior Researcher on a proposal, or create a TRI AI Saturdays Research Award project that still needs
@@ -626,7 +652,7 @@ export function AdminMeetingsPage() {
             ))}
           </fieldset>
         ) : null}
-        {kind === "scoping" ? (
+        {meetingIncludesAdmins(kind) ? (
           <p className="quiet">
             {directory.some((person) => person.role === "admin")
               ? `TRI AI is invited: ${directory
@@ -644,7 +670,7 @@ export function AdminMeetingsPage() {
             ...candidates
               .filter((person) => selected.includes(person.uid))
               .map((person) => ({ name: person.name, zone: zones[person.uid] || PROGRAMME_ZONE })),
-            ...(kind === "scoping"
+            ...(meetingIncludesAdmins(kind)
               ? directory
                   .filter((person) => person.role === "admin")
                   .map((person) => ({ name: person.name || "TRI AI Admin", zone: zones[person.uid] || PROGRAMME_ZONE }))

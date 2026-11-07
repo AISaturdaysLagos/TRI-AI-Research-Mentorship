@@ -248,6 +248,7 @@ function statusLabel(status?: string) {
 
 export function overviewBlocks(input: {
   title: string;
+  summary?: string;
   question?: string;
   contribution?: string;
   year?: string;
@@ -257,6 +258,8 @@ export function overviewBlocks(input: {
   return [
     { style: "h1", text: "Project overview" },
     { style: "p", text: `Project: ${input.title}` },
+    { style: "h2", text: "Summary" },
+    { style: "p", text: line(input.summary || "") },
     { style: "h2", text: "Research question" },
     { style: "p", text: line(input.question || "") },
     { style: "h2", text: "Contribution" },
@@ -726,12 +729,14 @@ export async function syncCharterToDrive(
 }
 
 export type OverviewDocFields = {
+  summary?: string;
   question?: string;
   contribution?: string;
   year?: string;
 };
 
 const OVERVIEW_HEADINGS: Record<string, keyof OverviewDocFields> = {
+  summary: "summary",
   "research question": "question",
   contribution: "contribution",
   year: "year",
@@ -802,7 +807,7 @@ export async function pullOverviewFromDrive(
     });
     if (markdown == null) return null;
     const fields = parseOverviewMarkdown(markdown);
-    return fields.question || fields.contribution || fields.year ? fields : null;
+    return fields.summary || fields.question || fields.contribution || fields.year ? fields : null;
   } catch {
     return null;
   }

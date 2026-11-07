@@ -17,7 +17,7 @@ import { userFacingError } from "./errors";
 
 export type MeetingPerson = { uid: string; name: string; email: string };
 
-export type MeetingKind = "scoping" | "project";
+export type MeetingKind = "scoping" | "introduction" | "project";
 
 export type MeetingResponseValue = "attending" | "not_attending" | "needs_another_time";
 
@@ -131,6 +131,20 @@ export function listMeetingReplies(meetingId: string) {
 export const scopingMeetingTaken =
   "This project already has a scoping meeting.";
 
+export const introductionMeetingTaken =
+  "This project already has an introductory meeting.";
+
+export function meetingKindLabel(meeting: { status?: string; kind?: MeetingKind }) {
+  if (meeting.status === "cancelled") return "Cancelled";
+  if (meeting.kind === "scoping") return "New scoping meeting";
+  if (meeting.kind === "introduction") return "Introductory meeting";
+  return "Active project meeting";
+}
+
+export function meetingIncludesAdmins(kind: MeetingKind) {
+  return kind === "scoping" || kind === "introduction";
+}
+
 async function reserveScopingMeeting(
   slotId: string,
   uid: string,
@@ -173,6 +187,48 @@ async function reserveScopingMeeting(
         : "";
     if (code === "permission-denied" || /PERMISSION_DENIED|evaluation error/i.test(raw)) {
       throw new Error(scopingMeetingTaken);
+    }
+    throw err;
+  }
+  return meetingId;
+}
+
+async function reserveIntroductionMeeting(projectId: string, uid: string) {
+  const db = firestore();
+  if (!db) throw new Error("This is unavailable right now.");
+  const trimmed = projectId.trim();
+  if (!trimmed) throw new Error("Choose a project.");
+  const slotRef = doc(db, "introductionSlots", trimmed);
+  const meetingId = doc(collection(db, "meetings")).id;
+  const slot = await getDoc(slotRef);
+  if (slot.exists()) {
+    const priorId = String(slot.data()?.meetingId ?? "");
+    if (priorId) {
+      try {
+        const prior = await getDoc(doc(db, "meetings", priorId));
+        if (prior.exists() && prior.data()?.status !== "cancelled") throw new Error(introductionMeetingTaken);
+      } catch (err) {
+        if (err instanceof Error && err.message === introductionMeetingTaken) throw err;
+      }
+    }
+  }
+  try {
+    await runTransaction(db, async (tx) => {
+      tx.set(slotRef, {
+        meetingId,
+        projectId: trimmed,
+        claimedBy: uid,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : "";
+    const code =
+      err && typeof err === "object" && "code" in err && typeof (err as { code: unknown }).code === "string"
+        ? (err as { code: string }).code
+        : "";
+    if (code === "permission-denied" || /PERMISSION_DENIED|evaluation error/i.test(raw)) {
+      throw new Error(introductionMeetingTaken);
     }
     throw err;
   }
@@ -249,7 +305,9 @@ export async function saveMeeting(input: {
       throw new Error(scopingNeedsAwardProject);
     }
   }
-  const admins = input.kind === "scoping" ? (input.admins ?? []).slice(0, 3) : [];
+  if (input.kind === "introduction" && !input.projectId) throw new Error("Choose a project.");
+  const withAdmins = meetingIncludesAdmins(input.kind);
+  const admins = withAdmins ? (input.admins ?? []).slice(0, 3) : [];
   const participantIds = [
     ...new Set([...input.researchers, ...input.seniorResearchers, ...admins].map((person) => person.uid)),
   ];
@@ -261,7 +319,9 @@ export async function saveMeeting(input: {
           ...input.claim,
           ...(input.projectId ? { projectId: input.projectId } : {}),
         })
-      : doc(collection(db, "meetings")).id;
+      : input.kind === "introduction"
+        ? await reserveIntroductionMeeting(input.projectId, uid)
+        : doc(collection(db, "meetings")).id;
   await setDoc(doc(db, "meetings", meetingId), {
     kind: input.kind,
     title: input.title,
@@ -273,7 +333,7 @@ export async function saveMeeting(input: {
     participantIds,
     researchers: input.researchers,
     seniorResearchers: input.seniorResearchers,
-    ...(input.kind === "scoping" ? { admins } : {}),
+    ...(withAdmins ? { admins } : {}),
     calendarEventId: input.calendarEventId,
     calendarLink: input.calendarLink,
     status: "scheduled",

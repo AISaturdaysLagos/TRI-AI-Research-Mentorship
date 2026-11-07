@@ -21,8 +21,11 @@ import {
   meetingAttendees,
   meetingDate,
   meetingReplyPhrase,
+  introductionMeetingTaken,
   listParticipantMeetings,
+  meetingIncludesAdmins,
   meetingIsArchived,
+  meetingKindLabel,
   saveMeeting,
   scopingMeetingTaken,
   scopingNeedsMatch,
@@ -175,11 +178,7 @@ function MeetingCard({
   return (
     <article className="opportunity">
       <p className="mono">
-        {meeting.status === "cancelled"
-          ? "Cancelled"
-          : meeting.kind === "scoping"
-            ? "New scoping meeting"
-            : "Active project meeting"}
+        {meetingKindLabel(meeting)}
       </p>
       <h3>{meeting.title || "Meeting"}</h3>
       <p>
@@ -329,12 +328,14 @@ function ResearcherMeetingForm({
   email,
   displayName,
   takenScoping,
+  takenIntroduction,
   onSaved,
 }: {
   uid: string;
   email: string;
   displayName: string;
   takenScoping: Set<string>;
+  takenIntroduction: Set<string>;
   onSaved: () => Promise<void>;
 }) {
   const [kind, setKind] = useState<MeetingKind>("scoping");
@@ -423,8 +424,11 @@ function ResearcherMeetingForm({
     const project = projects.find((row) => row.proposalId === item.id);
     return !project || project.status === "scoping";
   });
+  const introductionProjects = projects.filter(
+    (item) => ["scoping", "active", "internal_review"].includes(item.status || "") && !takenIntroduction.has(item.id),
+  );
   const activeProjects = projects.filter((item) => item.status === "active");
-  const options = kind === "scoping" ? scopingProposals : activeProjects;
+  const options = kind === "scoping" ? scopingProposals : kind === "introduction" ? introductionProjects : activeProjects;
 
   const candidates = useMemo(() => {
     const self = { uid, email };
@@ -499,14 +503,18 @@ function ResearcherMeetingForm({
       setError(scopingNeedsMatch);
       return;
     }
+    if (kind === "introduction" && !introductionProjects.some((item) => item.id === recordId)) {
+      setError("Choose a project.");
+      return;
+    }
     const invited = candidates.filter((person) => selected.includes(person.uid) || person.uid === uid);
     const seniorIds = new Set(
-      kind === "project"
-        ? (projects.find((item) => item.id === recordId)?.seniorResearchers ?? []).map((person) => person.uid)
-        : [
+      kind === "scoping"
+        ? [
             ...(projects.find((item) => item.proposalId === recordId)?.seniorResearchers ?? []).map((person) => person.uid),
             ...matches.filter((item) => item.proposalId === recordId).map((item) => item.mentorId),
-          ],
+          ]
+        : (projects.find((item) => item.id === recordId)?.seniorResearchers ?? []).map((person) => person.uid),
     );
     seniorIds.add(uid);
     const researchers = invited.filter((person) => person.uid !== uid && !seniorIds.has(person.uid));
@@ -527,15 +535,14 @@ function ResearcherMeetingForm({
       ...seniorResearchers.filter((person) => person.uid === uid),
       ...seniorResearchers.filter((person) => person.uid !== uid),
     ];
-    const programmeAdmins =
-      kind === "scoping"
-        ? admins.filter(
-            (person) =>
-              !researchers.some((item) => item.uid === person.uid) &&
-              !orderedSeniors.some((item) => item.uid === person.uid),
-          )
-        : [];
-    if (kind === "scoping" && programmeAdmins.length === 0) {
+    const programmeAdmins = meetingIncludesAdmins(kind)
+      ? admins.filter(
+          (person) =>
+            !researchers.some((item) => item.uid === person.uid) &&
+            !orderedSeniors.some((item) => item.uid === person.uid),
+        )
+      : [];
+    if (meetingIncludesAdmins(kind) && programmeAdmins.length === 0) {
       setError("Add a TRI AI admin.");
       return;
     }
@@ -543,12 +550,22 @@ function ResearcherMeetingForm({
       setError(scopingMeetingTaken);
       return;
     }
+    if (kind === "introduction" && takenIntroduction.has(recordId)) {
+      setError(introductionMeetingTaken);
+      return;
+    }
     const guests = [...invited, ...programmeAdmins];
     const title =
       kind === "scoping"
         ? proposals.find((item) => item.id === recordId)?.title || "Scoping meeting"
-        : projects.find((item) => item.id === recordId)?.title || "Project meeting";
-    const subject = kind === "scoping" ? `Scoping meeting: ${title}` : `Project meeting: ${title}`;
+        : projects.find((item) => item.id === recordId)?.title ||
+          (kind === "introduction" ? "Introductory meeting" : "Project meeting");
+    const subject =
+      kind === "scoping"
+        ? `Scoping meeting: ${title}`
+        : kind === "introduction"
+          ? `Introductory meeting: ${title}`
+          : `Project meeting: ${title}`;
     const details = note.trim() || "TRI AI Research Programme meeting.";
     const template = calendarTemplateLink({
       title: subject,
@@ -580,9 +597,9 @@ function ResearcherMeetingForm({
         title: subject,
         proposalId: kind === "scoping" ? recordId : "",
         projectId:
-          kind === "project"
-            ? recordId
-            : projects.find((item) => item.proposalId === recordId && item.status === "scoping")?.id || "",
+          kind === "scoping"
+            ? projects.find((item) => item.proposalId === recordId && item.status === "scoping")?.id || ""
+            : recordId,
         starts: startDate,
         ends: endDate,
         note: details,
@@ -616,6 +633,7 @@ function ResearcherMeetingForm({
           title: subject,
           when: formatMeetingWhen({ toDate: () => startDate }),
           scoping: kind === "scoping",
+          introductory: kind === "introduction",
           attendees: guests.map((person) => named(person.name, person.email)),
           from: named(displayName || "Senior Researcher", email),
         }),
@@ -658,6 +676,7 @@ function ResearcherMeetingForm({
       <SearchSelect
         label="Meeting"
         options={[
+          { value: "introduction", label: "Introductory meeting" },
           { value: "scoping", label: "New scoping meeting" },
           { value: "project", label: "Active project meeting" },
         ]}
@@ -669,12 +688,12 @@ function ResearcherMeetingForm({
         placeholder="Meeting type…"
       />
       <SearchSelect
-        label={kind === "scoping" ? "Proposal" : "Active project"}
+        label={kind === "scoping" ? "Proposal" : kind === "introduction" ? "Project" : "Active project"}
         options={[
           { value: "", label: "Select" },
           ...options.map((item) => {
             const type =
-              kind === "project" && "awardId" in item ? projectTypeLabel(item as ProjectChoice) : undefined;
+              kind !== "scoping" && "awardId" in item ? projectTypeLabel(item as ProjectChoice) : undefined;
             return {
               value: item.id,
               label: item.title || "Untitled",
@@ -689,6 +708,9 @@ function ResearcherMeetingForm({
       />
         {kind === "scoping" && scopingProposals.length === 0 ? (
           <p className="quiet">Introduce a Senior Researcher first.</p>
+        ) : null}
+        {kind === "introduction" && introductionProjects.length === 0 ? (
+          <p className="quiet">Every project you are on already has an introductory meeting, or you have not joined a project yet.</p>
         ) : null}
       {recordId && candidates.length > 0 && !candidates.some((person) => person.uid === uid) ? (
         <p className="quiet">Add yourself and one Researcher.</p>
@@ -718,7 +740,7 @@ function ResearcherMeetingForm({
           ))}
         </fieldset>
       ) : null}
-      {kind === "scoping" ? (
+      {meetingIncludesAdmins(kind) ? (
         <p className="quiet">
           {admins.length > 0
             ? `TRI AI is invited: ${admins.map((person) => person.name).join(", ")}`
@@ -733,7 +755,7 @@ function ResearcherMeetingForm({
           ...candidates
             .filter((person) => selected.includes(person.uid))
             .map((person) => ({ name: person.name, zone: personZones[person.uid] || PROGRAMME_ZONE })),
-          ...(kind === "scoping"
+          ...(meetingIncludesAdmins(kind)
             ? admins.map((person) => ({ name: person.name, zone: personZones[person.uid] || PROGRAMME_ZONE }))
             : []),
         ]}
@@ -849,10 +871,11 @@ export function MeetingsPage() {
     return <p>Scoping meetings are for Researchers and Senior Researchers. <Link to="/admin/meetings">Admin scheduling</Link></p>;
   }
 
+  const introductions = meetings.filter((meeting) => meeting.kind === "introduction" && !meetingIsArchived(meeting));
   const scoping = meetings.filter((meeting) => meeting.kind === "scoping" && !meetingIsArchived(meeting));
   const active = meetings.filter((meeting) => meeting.kind === "project" && !meetingIsArchived(meeting));
   const archived = meetings.filter((meeting) => meetingIsArchived(meeting));
-  const scheduled = [...scoping, ...active].sort(
+  const scheduled = [...introductions, ...scoping, ...active].sort(
     (a, b) => (meetingDate(a.startsAt)?.getTime() ?? 0) - (meetingDate(b.startsAt)?.getTime() ?? 0),
   );
 
@@ -885,7 +908,7 @@ export function MeetingsPage() {
           <h1>Scoping meetings</h1>
           <p className="lede">
             {profile.role === "senior_researcher"
-              ? "Set a scoping meeting, or a meeting on an active project."
+              ? "Set an introductory meeting, a scoping meeting, or a meeting on an active project."
               : "Confirm a meeting."}
           </p>
         </div>
@@ -920,6 +943,13 @@ export function MeetingsPage() {
                     .map((meeting) => meeting.proposalId || ""),
                 )
               }
+              takenIntroduction={
+                new Set(
+                  meetings
+                    .filter((meeting) => meeting.kind === "introduction" && meeting.status !== "cancelled" && meeting.projectId)
+                    .map((meeting) => meeting.projectId || ""),
+                )
+              }
               onSaved={() => reload(user.uid, profile.role)}
             />
           ) : null}
@@ -939,7 +969,12 @@ export function MeetingsPage() {
             renderMeeting={(meeting) => meetingCard(meeting)}
             list={
               <>
-                <h3><Mark name="meeting">New scoping meetings</Mark></h3>
+                <h3><Mark name="meeting">Introductory meetings</Mark></h3>
+                {introductions.length === 0 ? <div className="empty">No introductory meeting is scheduled for you yet.</div> : null}
+                {introductions.map((meeting) => (
+                  <div key={meeting.id}>{meetingCard(meeting)}</div>
+                ))}
+                <h3 style={{ marginTop: 28 }}><Mark name="meeting">New scoping meetings</Mark></h3>
                 {scoping.length === 0 ? <div className="empty">No scoping meeting is scheduled for you yet.</div> : null}
                 {scoping.map((meeting) => (
                   <div key={meeting.id}>{meetingCard(meeting)}</div>
