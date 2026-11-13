@@ -391,11 +391,45 @@ export function AdminMeetingsPage() {
         .map((person) => ({ ...person, key: person.uid }));
       return [...researchers, ...seniors];
     }
+    function candidatesOnProject(project: ProjectOption): MeetingCandidate[] {
+      const people = new Map<string, MeetingCandidate>();
+      function addAccount(person: MeetingPerson, role: "researcher" | "senior_researcher") {
+        if (people.has(person.uid)) return;
+        people.set(person.uid, { ...person, key: person.uid, projectRole: role });
+      }
+      for (const item of project.researchers ?? []) {
+        const person = personFrom(directory, item.uid || "", item.name || "Researcher");
+        if (person) addAccount(person, "researcher");
+      }
+      for (const item of project.seniorResearchers ?? []) {
+        const person = personFrom(directory, item.uid || "", item.name || "Senior Researcher");
+        if (person) addAccount(person, "senior_researcher");
+      }
+      for (const invite of invites) {
+        if (invite.projectId !== project.id || invite.status !== "open") continue;
+        if (invite.role !== "researcher" && invite.role !== "senior_researcher") continue;
+        const email = String(invite.guestEmail || "").trim().toLowerCase();
+        const name = String(invite.guestName || "").trim().replace(/\s+/g, " ");
+        if (!name || !GUEST_EMAIL.test(email)) continue;
+        const account = directory.find((item) => item.email.toLowerCase() === email && item.role !== "admin");
+        if (account) {
+          addAccount(
+            { uid: account.uid, name: account.name || name, email: account.email || email },
+            invite.role,
+          );
+          continue;
+        }
+        const key = `guest:${email}`;
+        if (people.has(key)) continue;
+        people.set(key, { uid: "", name, email, key, projectRole: invite.role, pending: true });
+      }
+      return [...people.values()];
+    }
     if (kind === "scoping") {
       const awardProject = projects.find(
         (item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId),
       );
-      if (awardProject) return peopleOn(awardProject);
+      if (awardProject) return candidatesOnProject(awardProject);
       const proposal = proposals.find((item) => item.id === recordId);
       if (!proposal) return [];
       const researcherIds = proposal.researcherIds?.length ? proposal.researcherIds : proposal.ownerId ? [proposal.ownerId] : [];
@@ -412,38 +446,7 @@ export function AdminMeetingsPage() {
     const project = projects.find((item) => item.id === recordId);
     if (!project) return [];
     if (kind !== "introduction") return peopleOn(project);
-    const people = new Map<string, MeetingCandidate>();
-    function addAccount(person: MeetingPerson, role: "researcher" | "senior_researcher") {
-      if (people.has(person.uid)) return;
-      people.set(person.uid, { ...person, key: person.uid, projectRole: role });
-    }
-    for (const item of project.researchers ?? []) {
-      const person = personFrom(directory, item.uid || "", item.name || "Researcher");
-      if (person) addAccount(person, "researcher");
-    }
-    for (const item of project.seniorResearchers ?? []) {
-      const person = personFrom(directory, item.uid || "", item.name || "Senior Researcher");
-      if (person) addAccount(person, "senior_researcher");
-    }
-    for (const invite of invites) {
-      if (invite.projectId !== project.id || invite.status !== "open") continue;
-      if (invite.role !== "researcher" && invite.role !== "senior_researcher") continue;
-      const email = String(invite.guestEmail || "").trim().toLowerCase();
-      const name = String(invite.guestName || "").trim().replace(/\s+/g, " ");
-      if (!name || !GUEST_EMAIL.test(email)) continue;
-      const account = directory.find((item) => item.email.toLowerCase() === email && item.role !== "admin");
-      if (account) {
-        addAccount(
-          { uid: account.uid, name: account.name || name, email: account.email || email },
-          invite.role,
-        );
-        continue;
-      }
-      const key = `guest:${email}`;
-      if (people.has(key)) continue;
-      people.set(key, { uid: "", name, email, key, projectRole: invite.role, pending: true });
-    }
-    return [...people.values()];
+    return candidatesOnProject(project);
   }, [directory, invites, kind, matches, projects, proposals, recordId]);
 
   useEffect(() => {
@@ -486,7 +489,7 @@ export function AdminMeetingsPage() {
     );
     let invitedResearchers: MeetingGuest[] = [];
     let invitedSeniors: MeetingGuest[] = [];
-    if (kind === "introduction") {
+    if (kind === "introduction" || isAwardScoping) {
       const chosen = candidates.filter((person) => selected.includes(person.key));
       researchers = chosen.filter((person) => person.projectRole === "researcher" && person.uid);
       seniorResearchers = chosen.filter((person) => person.projectRole === "senior_researcher" && person.uid);
@@ -516,7 +519,7 @@ export function AdminMeetingsPage() {
     if (accountResearchers.length + invitedResearchers.length === 0 || accountSeniors.length + invitedSeniors.length === 0) {
       setError(
         isAwardScoping
-          ? "Invite a Researcher and a Senior Researcher, then wait until both have joined the project."
+          ? "Invite a Researcher and a Senior Researcher to this project first."
           : "Choose at least one Researcher and one Senior Researcher.",
       );
       return;
@@ -533,12 +536,13 @@ export function AdminMeetingsPage() {
       setError(introductionMeetingTaken);
       return;
     }
-    const subject =
+    const subject = (
       kind === "scoping"
         ? `Scoping meeting: ${titleFor(recordId)}`
         : kind === "introduction"
           ? `Introductory meeting: ${titleFor(recordId)}`
-          : `Project meeting: ${titleFor(recordId)}`;
+          : `Project meeting: ${titleFor(recordId)}`
+    ).slice(0, 199);
     const details = note.trim() || "TRI AI Research Programme meeting.";
     const guests = [...accountResearchers, ...accountSeniors, ...invitedResearchers, ...invitedSeniors, ...programmeAdmins];
     const emails = guests.map((person) => person.email);
@@ -699,15 +703,14 @@ export function AdminMeetingsPage() {
             scoping.
           </p>
         ) : null}
-        {kind === "introduction" && recordId && candidates.length > 0 ? (
+        {(kind === "introduction" || isAwardScoping) && recordId && candidates.length > 0 ? (
           <p className="quiet">Everyone invited to this project is included. Remove anyone who should not be on the meeting.</p>
         ) : null}
-        {kind !== "introduction" && recordId && (candidates.filter((person) => directory.find((item) => item.uid === person.uid)?.role === "senior_researcher").length === 0 || candidates.filter((person) => directory.find((item) => item.uid === person.uid)?.role !== "senior_researcher").length === 0) ? (
-          <p className="quiet">
-            {isAwardScoping
-              ? "Invite a Researcher and a Senior Researcher, then wait until both have joined before setting the meeting."
-              : "Add a Researcher and a Senior Researcher."}
-          </p>
+        {kind !== "introduction" && !isAwardScoping && recordId && (candidates.filter((person) => directory.find((item) => item.uid === person.uid)?.role === "senior_researcher").length === 0 || candidates.filter((person) => directory.find((item) => item.uid === person.uid)?.role !== "senior_researcher").length === 0) ? (
+          <p className="quiet">Add a Researcher and a Senior Researcher.</p>
+        ) : null}
+        {isAwardScoping && recordId && candidates.length === 0 ? (
+          <p className="quiet">Invite a Researcher and a Senior Researcher to this project first.</p>
         ) : null}
         {candidates.length > 0 ? (
           <fieldset className="fields">

@@ -341,7 +341,7 @@ export async function saveMeeting(input: {
     participantIds,
     researchers: input.researchers,
     seniorResearchers: input.seniorResearchers,
-    ...(input.kind === "introduction"
+    ...(input.kind === "introduction" || input.kind === "scoping"
       ? {
           invitedResearchers: (input.invitedResearchers ?? []).slice(0, 39),
           invitedSeniors: (input.invitedSeniors ?? []).slice(0, 39),
