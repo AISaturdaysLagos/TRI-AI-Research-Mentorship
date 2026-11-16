@@ -256,7 +256,7 @@ export function ProjectWorkspacePage() {
         markdown: blocksToMarkdown(charterBlocks(nextProject.title || "Project", nextCharter, Boolean(nextProject.charterSigned))),
       },
     ];
-    if (nextProject.awardId) {
+    if (nextProject.awardId || nextProject.internalId) {
       documents.push({
         name: "Scoping notes",
         markdown: blocksToMarkdown(scopingNotesBlocks({ title: nextProject.title || "Project" })),

@@ -19,6 +19,7 @@ type PublicProject = {
   year?: string;
   status?: string;
   awardId?: string;
+  internalId?: string;
   researchers?: NamedPerson[];
   seniorResearchers?: NamedPerson[];
 };

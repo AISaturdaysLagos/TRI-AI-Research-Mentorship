@@ -80,6 +80,7 @@ type ProjectOption = {
   status?: string;
   proposalId?: string;
   awardId?: string;
+  internalId?: string;
   researchers?: { uid?: string; name?: string }[];
   seniorResearchers?: { uid?: string; name?: string }[];
 };
@@ -347,7 +348,7 @@ export function AdminMeetingsPage() {
     (item) => ["scoping", "active", "internal_review"].includes(item.status || "") && !introductionTaken(item.id),
   );
   const awardScopingProjects = projects.filter(
-    (item) => item.status === "scoping" && Boolean(item.awardId) && !scopingTaken(item.id),
+    (item) => item.status === "scoping" && Boolean(item.awardId || item.internalId) && !scopingTaken(item.id),
   );
   const awardProposalIds = new Set(
     awardScopingProjects.map((item) => item.proposalId).filter((id): id is string => Boolean(id)),
@@ -359,7 +360,7 @@ export function AdminMeetingsPage() {
     return project.status === "scoping" && !scopingTaken(project.id);
   });
   const isAwardScoping =
-    kind === "scoping" && projects.some((item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId));
+    kind === "scoping" && projects.some((item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId || item.internalId));
   const options =
     kind === "scoping" ? [...scopingProposals, ...awardScopingProjects] : kind === "introduction" ? introductionProjects : activeProjects;
 
@@ -427,7 +428,7 @@ export function AdminMeetingsPage() {
     }
     if (kind === "scoping") {
       const awardProject = projects.find(
-        (item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId),
+        (item) => item.id === recordId && item.status === "scoping" && Boolean(item.awardId || item.internalId),
       );
       if (awardProject) return candidatesOnProject(awardProject);
       const proposal = proposals.find((item) => item.id === recordId);
@@ -655,8 +656,7 @@ export function AdminMeetingsPage() {
           <h2><Mark name="meeting">Create a meeting</Mark></h2>
         </div>
         <p className="quiet">
-          Set an introductory meeting for a project, a scoping meeting for an introduced proposal or a TRI AI Saturdays Research Award project, or a meeting on an
-          active project.
+          Set an introductory meeting for a project, a scoping meeting for an introduced proposal or a TRI AI Saturdays Research Award or TRI AI Internal Research project, or a meeting on an active project.
         </p>
         <SearchSelect
           label="Meeting"
@@ -673,12 +673,13 @@ export function AdminMeetingsPage() {
           placeholder="Meeting type…"
         />
         <SearchSelect
-          label={kind === "scoping" ? "Proposal or award project" : kind === "introduction" ? "Project" : "Active project"}
+          label={kind === "scoping" ? "Proposal or project" : kind === "introduction" ? "Project" : "Active project"}
           options={[
             { value: "", label: "Select" },
             ...options.map((item) => {
               const taken = kind === "scoping" && scopingTaken(item.id);
-              const award = kind === "scoping" && "awardId" in item && Boolean((item as ProjectOption).awardId);
+              const projectOption = item as ProjectOption;
+              const award = kind === "scoping" && Boolean(projectOption.awardId || projectOption.internalId);
               const type =
                 kind === "project" || kind === "introduction" || award ? projectTypeLabel(item as ProjectOption) : undefined;
               return {
@@ -691,7 +692,7 @@ export function AdminMeetingsPage() {
           ]}
           value={recordId}
           onChange={setRecordId}
-          placeholder={kind === "scoping" ? "Search proposals or award projects…" : "Search projects…"}
+          placeholder={kind === "scoping" ? "Search proposals or projects…" : "Search projects…"}
           required
         />
         {kind === "introduction" && introductionProjects.length === 0 ? (
@@ -699,8 +700,8 @@ export function AdminMeetingsPage() {
         ) : null}
         {kind === "scoping" && scopingProposals.length === 0 && awardScopingProjects.length === 0 ? (
           <p className="quiet">
-            Introduce a Senior Researcher on a proposal, or create a TRI AI Saturdays Research Award project that still needs
-            scoping.
+            Introduce a Senior Researcher on a proposal, or create a TRI AI Saturdays Research Award or TRI AI Internal Research
+            project that still needs scoping.
           </p>
         ) : null}
         {(kind === "introduction" || isAwardScoping) && recordId && candidates.length > 0 ? (

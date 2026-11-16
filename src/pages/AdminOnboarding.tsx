@@ -47,6 +47,7 @@ function blankGuest(): OnboardingGuest {
 
 function routeLabel(route: ResearcherRoute | undefined) {
   if (route === "award") return "TRI AI Saturdays Research Award";
+  if (route === "internal") return "TRI AI Internal Research";
   if (route === "proposal") return "Direct Proposal";
   return "";
 }
@@ -54,9 +55,11 @@ function routeLabel(route: ResearcherRoute | undefined) {
 function routeSummary(guests: OnboardingGuest[]) {
   const proposal = guests.filter((guest) => guest.route === "proposal").length;
   const award = guests.filter((guest) => guest.route === "award").length;
+  const internal = guests.filter((guest) => guest.route === "internal").length;
   const parts = [
     proposal === 1 ? "1 Direct Proposal" : proposal > 1 ? `${proposal} Direct Proposals` : "",
     award === 1 ? "1 TRI AI Saturdays Research Award" : award > 1 ? `${award} TRI AI Saturdays Research Award` : "",
+    internal === 1 ? "1 TRI AI Internal Research" : internal > 1 ? `${internal} TRI AI Internal Research` : "",
   ].filter(Boolean);
   return parts.join(", ");
 }
@@ -180,8 +183,11 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
       setError(`Each ${copy.person} needs a name and an email address.`);
       return;
     }
-    if (audience === "researcher" && people.some((guest) => guest.route !== "proposal" && guest.route !== "award")) {
-      setError("Choose Direct Proposal or TRI AI Saturdays Research Award for each Researcher.");
+    if (
+      audience === "researcher"
+      && people.some((guest) => guest.route !== "proposal" && guest.route !== "award" && guest.route !== "internal")
+    ) {
+      setError("Choose Direct Proposal, TRI AI Saturdays Research Award, or TRI AI Internal Research for each Researcher.");
       return;
     }
     const emails = new Set<string>();
@@ -268,7 +274,7 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
             audience === "researcher"
               ? researcherOnboardingEmail({
                   researcher: named(guest.name, guest.email),
-                  route: guest.route === "award" ? "award" : "proposal",
+                  route: guest.route === "award" || guest.route === "internal" ? guest.route : "proposal",
                   title: meetingTitle,
                   when: span,
                   calendarLink: created.link,
@@ -303,7 +309,7 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
       <p className="quiet">
         Add one or more {copy.people}. You are added to the same Google Calendar event, and that event includes the meeting. Saved meetings stay here, so you can change the time, add another {copy.person}, or delete the meeting. Add to Google Calendar opens the event. Each email opens in your email app with the calendar link.
         {audience === "researcher"
-          ? " Choose Direct Proposal or TRI AI Saturdays Research Award for each Researcher. That sets their email."
+          ? " Choose Direct Proposal, TRI AI Saturdays Research Award, or TRI AI Internal Research for each Researcher. That sets their email."
           : ""}
       </p>
       <div>
@@ -410,6 +416,16 @@ function InviteOnboarding({ audience }: { audience: OnboardingAudience }) {
                     onClick={() => updateGuest(index, { route: "award" })}
                   >
                     <strong>TRI AI Saturdays Research Award</strong>
+                    <p className="quiet">Create a profile.</p>
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={guest.route === "internal"}
+                    className={guest.route === "internal" ? "is-selected" : ""}
+                    onClick={() => updateGuest(index, { route: "internal" })}
+                  >
+                    <strong>TRI AI Internal Research</strong>
                     <p className="quiet">Create a profile.</p>
                   </button>
                 </fieldset>

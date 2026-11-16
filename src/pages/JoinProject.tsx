@@ -15,6 +15,7 @@ type InviteRecord = {
   role?: string;
   status?: string;
   awardId?: string;
+  internalId?: string;
   guestName?: string;
   guestEmail?: string;
 };

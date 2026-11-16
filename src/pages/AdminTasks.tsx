@@ -184,7 +184,7 @@ function doneArea(task: ProgrammeTask) {
 
 type TaskRecords = {
   proposals: { id: string; title?: string; status?: string; name?: string }[];
-  projects: { id: string; title?: string; status?: string; proposalId?: string; awardId?: string; scoped?: boolean; charterSigned?: boolean; researchers?: { name?: string }[]; seniorResearchers?: { name?: string }[] }[];
+  projects: { id: string; title?: string; status?: string; proposalId?: string; awardId?: string; internalId?: string; scoped?: boolean; charterSigned?: boolean; researchers?: { name?: string }[]; seniorResearchers?: { name?: string }[] }[];
   matches: { id: string; proposalId?: string; title?: string; mentorName?: string; response?: string; introduced?: boolean }[];
   seniors: { id: string; name?: string; poolStatus?: string }[];
   meetings: { kind?: string; status?: string; proposalId?: string; projectId?: string }[];
@@ -241,7 +241,7 @@ export function AdminTasksPage() {
         if (cancel) return;
         setRecords({
           proposals: proposals as { id: string; title?: string; status?: string; name?: string }[],
-          projects: projects as { id: string; title?: string; status?: string; proposalId?: string; awardId?: string; scoped?: boolean; charterSigned?: boolean; researchers?: { name?: string }[]; seniorResearchers?: { name?: string }[] }[],
+          projects: projects as { id: string; title?: string; status?: string; proposalId?: string; awardId?: string; internalId?: string; scoped?: boolean; charterSigned?: boolean; researchers?: { name?: string }[]; seniorResearchers?: { name?: string }[] }[],
           matches: matches as { id: string; proposalId?: string; title?: string; mentorName?: string; response?: string; introduced?: boolean }[],
           seniors: seniors as { id: string; name?: string; poolStatus?: string }[],
           meetings: meetings as { kind?: string; status?: string; proposalId?: string; projectId?: string }[],

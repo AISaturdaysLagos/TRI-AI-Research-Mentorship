@@ -35,6 +35,7 @@ type PendingInvite = {
   projectTitle?: string;
   role?: string;
   awardId?: string;
+  internalId?: string;
   guestName?: string;
 };
 
@@ -47,6 +48,7 @@ type ProjectRow = {
   charterSigned?: boolean;
   proposalId?: string;
   awardId?: string;
+  internalId?: string;
   researchers?: Person[];
   seniorResearchers?: Person[];
 };

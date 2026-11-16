@@ -18,6 +18,7 @@ type ProjectRow = {
   status?: string;
   proposalId?: string;
   awardId?: string;
+  internalId?: string;
   scoped?: boolean;
   charterSigned?: boolean;
   researchers?: Person[];
@@ -309,7 +310,7 @@ export function buildProgrammeTasks(input: {
         action: "Open projects",
       });
     }
-    if (project.awardId && researchers.length === 0 && !openInvite(input.invites, project.id, "researcher")) {
+    if ((project.awardId || project.internalId) && researchers.length === 0 && !openInvite(input.invites, project.id, "researcher")) {
       add({
         id: `award:${project.id}`,
         area: "Researcher",
@@ -321,7 +322,7 @@ export function buildProgrammeTasks(input: {
         action: "Open projects",
       });
     }
-    if (!project.awardId && researchers.length === 0 && (scoping || project.status === "active")) {
+    if (!project.awardId && !project.internalId && researchers.length === 0 && (scoping || project.status === "active")) {
       add({
         id: `researchers:${project.id}`,
         area: "Researcher",

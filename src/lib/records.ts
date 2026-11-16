@@ -659,11 +659,14 @@ export async function createAwardProject(input: {
   note: string;
   researchers?: InviteGuest[];
   seniors?: InviteGuest[];
+  track?: "award" | "internal";
 }) {
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
+  const internal = input.track === "internal";
   const title = input.title.trim().slice(0, 200);
-  if (!title) throw new Error("Add a title for this TRI AI Saturdays Research Award project.");
+  const category = internal ? "TRI AI Internal Research" : "TRI AI Saturdays Research Award";
+  if (!title) throw new Error(`Add a title for this ${category} project.`);
   const [proposalSnap, projectSnap] = await Promise.all([
     getDocs(collection(db, "proposals")),
     getDocs(collection(db, "projects")),
@@ -674,14 +677,15 @@ export async function createAwardProject(input: {
   if (taken) throw new Error("A proposal or project already uses this name.");
   const researchers = inviteGuests(input.researchers ?? []);
   const seniors = inviteGuests(input.seniors ?? []);
-  const awardRef = doc(collection(db, "awards"));
+  const awardRef = internal ? null : doc(collection(db, "awards"));
+  const internalId = internal ? crypto.randomUUID() : "";
   const projectRef = doc(collection(db, "projects"));
   const invites = [
     ...researchers.map((person) => ({ ...person, role: "researcher" as const, token: crypto.randomUUID() })),
     ...seniors.map((person) => ({ ...person, role: "senior_researcher" as const, token: crypto.randomUUID() })),
   ];
   const batch = writeBatch(db);
-  batch.set(awardRef, {
+  if (awardRef) batch.set(awardRef, {
     title,
     note: input.note.trim().slice(0, 500),
     recipientName: "",
@@ -708,7 +712,8 @@ export async function createAwardProject(input: {
     scoped: false,
     scopedMeetingId: "",
     charterSigned: false,
-    awardId: awardRef.id,
+    awardId: awardRef?.id || "",
+    internalId,
     researchers: [],
     seniorResearchers: [],
     participantIds: [],
@@ -721,7 +726,8 @@ export async function createAwardProject(input: {
       projectTitle: title,
       role: invite.role,
       status: "open",
-      awardId: awardRef.id,
+      awardId: awardRef?.id || "",
+      internalId,
       acceptedIds: [],
       guestName: invite.name,
       guestEmail: invite.email,
@@ -731,7 +737,7 @@ export async function createAwardProject(input: {
   }
   await batch.commit();
   invalidateReads();
-  return { awardId: awardRef.id, projectId: projectRef.id, invites };
+  return { awardId: awardRef?.id || "", internalId, projectId: projectRef.id, invites };
 }
 
 export function listProjects() {
@@ -831,7 +837,7 @@ export async function getProjectInvite(token: string) {
 }
 
 export async function createProjectInvite(
-  project: { id: string; title?: string; awardId?: string },
+  project: { id: string; title?: string; awardId?: string; internalId?: string },
   role: "researcher" | "senior_researcher",
   guest: InviteGuest,
 ) {
@@ -841,12 +847,14 @@ export async function createProjectInvite(
   if (!person) throw new Error("Add a name and an email address.");
   const token = crypto.randomUUID();
   const awardId = project.awardId || "";
+  const internalId = project.internalId || "";
   await setDoc(doc(db, "projectInvites", token), {
     projectId: project.id,
     projectTitle: project.title || "Project",
     role,
     status: "open",
     awardId,
+    internalId,
     acceptedIds: [],
     guestName: person.name,
     guestEmail: person.email,
@@ -911,6 +919,7 @@ export async function acceptProjectInvite(
   if (await projectMembership(projectId, uid)) return "already" as const;
 
   const awardId = String(invite.awardId ?? "");
+  const internalId = String(invite.internalId ?? "");
   if (role === "researcher" && awardId) {
     const lockRef = doc(db, "researcherAwardProjects", uid);
     const lock = await getDoc(lockRef);
@@ -918,6 +927,16 @@ export async function acceptProjectInvite(
       throw new Error(
         "You are already on a TRI AI Saturdays Research Award project.",
       );
+    }
+    if (!lock.exists()) {
+      await setDoc(lockRef, { projectId, inviteToken: token });
+    }
+  }
+  if (role === "researcher" && internalId) {
+    const lockRef = doc(db, "researcherInternalProjects", uid);
+    const lock = await getDoc(lockRef);
+    if (lock.exists() && lock.data().projectId !== projectId) {
+      throw new Error("You are already on a TRI AI Internal Research project.");
     }
     if (!lock.exists()) {
       await setDoc(lockRef, { projectId, inviteToken: token });
@@ -1027,6 +1046,7 @@ export async function ensureProjectsForIntroducedMatches(matches: IntroducedMatc
         scopedMeetingId: "",
         charterSigned: false,
         awardId: String(proposal.awardId ?? ""),
+        internalId: "",
         researchers,
         seniorResearchers: seniors,
         participantIds: [...new Set([...researchers.map((person) => person.uid), ...seniors.map((person) => person.uid)])],

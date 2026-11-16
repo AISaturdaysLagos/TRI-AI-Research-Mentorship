@@ -39,9 +39,11 @@ export type ProjectStatus =
 
 export type ProjectHealth = "green" | "amber" | "red";
 
-/** Route label for a project: award path vs direct proposal path. */
-export function projectTypeLabel(project: { awardId?: string | null }) {
-  return project.awardId ? "TRI AI Saturdays Research Award" : "Direct proposal";
+/** Route label for a project. TRI AI Internal Research is not shown on the public site. */
+export function projectTypeLabel(project: { awardId?: string | null; internalId?: string | null }) {
+  if (project.internalId) return "TRI AI Internal Research";
+  if (project.awardId) return "TRI AI Saturdays Research Award";
+  return "Direct proposal";
 }
 
 export type MentorAvailability =

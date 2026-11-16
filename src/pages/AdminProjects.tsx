@@ -45,6 +45,7 @@ type ProjectRow = {
   status?: string;
   proposalId?: string;
   awardId?: string;
+  internalId?: string;
   scoped?: boolean;
   scopedMeetingId?: string;
   charterSigned?: boolean;
@@ -61,6 +62,7 @@ type InviteRow = {
   role?: string;
   status?: string;
   awardId?: string;
+  internalId?: string;
   guestName?: string;
   guestEmail?: string;
 };
@@ -158,6 +160,7 @@ function joinDraft(invite: InviteRow): EmailDraft | null {
     role,
     link: inviteHref(invite.id),
     award: Boolean(invite.awardId),
+    internal: Boolean(invite.internalId),
     page: invite.awardId ? awardHref(invite.awardId) : "",
   });
 }
@@ -262,7 +265,7 @@ export function AdminProjectsPage() {
   const [awardLink, setAwardLink] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [track, setTrack] = useState<"" | "award" | "internal">("");
   const [draft, setDraft] = useState({
     title: "",
     summary: "",
@@ -317,8 +320,10 @@ export function AdminProjectsPage() {
       const researchers = inviteGuests(draft.researchers);
       const seniors = inviteGuests(draft.seniors);
       inviteGuests([...researchers, ...seniors]);
-      const created = await createAwardProject({ ...draft, researchers, seniors });
-      const link = awardHref(created.awardId);
+      if (track !== "award" && track !== "internal") return;
+      const category = track === "internal" ? "TRI AI Internal Research" : "TRI AI Saturdays Research Award";
+      const created = await createAwardProject({ ...draft, researchers, seniors, track });
+      const link = created.awardId ? awardHref(created.awardId) : "";
       setDraft({
         title: "",
         summary: "",
@@ -327,7 +332,7 @@ export function AdminProjectsPage() {
         researchers: [],
         seniors: [],
       });
-      setAdding(false);
+      setTrack("");
       setAwardLink(link);
       setPrepared(
         created.invites.map((invite) =>
@@ -336,14 +341,15 @@ export function AdminProjectsPage() {
             person: named(invite.name, invite.email),
             role: invite.role,
             link: inviteHref(invite.token),
-            award: true,
+            award: track === "award",
+            internal: track === "internal",
           }),
         ),
       );
       setNotice(
         created.invites.length > 0
-          ? "TRI AI Saturdays Research Award project added. Send the invite email. Each person creates an account, then joins the project."
-          : "TRI AI Saturdays Research Award project added. Add a researcher or a Senior Researcher to send an invite.",
+          ? `${category} project added. Send the invite email. Each person creates an account, then joins the project.`
+          : `${category} project added. Add a researcher or a Senior Researcher to send an invite.`,
       );
       const title = draft.title.trim();
       void ensureProjectDrive({
@@ -361,7 +367,8 @@ export function AdminProjectsPage() {
       }).catch((err: unknown) => setError(userFacingError(err, "Could not create the Google Drive folder.")));
       await reload();
     } catch (err) {
-      setError(userFacingError(err, "Could not add this TRI AI Saturdays Research Award project."));
+      const category = track === "internal" ? "TRI AI Internal Research" : "TRI AI Saturdays Research Award";
+      setError(userFacingError(err, `Could not add this ${category} project.`));
     } finally {
       setBusy("");
     }
@@ -391,6 +398,7 @@ export function AdminProjectsPage() {
             role: invite.role,
             link: inviteHref(invite.token),
             award: Boolean(project.awardId),
+            internal: Boolean(project.internalId),
           }),
         ),
       );
@@ -509,17 +517,26 @@ export function AdminProjectsPage() {
         <div>
           <h2><Mark name="projects">Projects</Mark></h2>
         </div>
-        {adding ? null : (
-          <button className="btn btn-primary" type="button" onClick={() => setAdding(true)}>
-            Add a TRI AI Saturdays Research Award project
-          </button>
+        {track ? null : (
+          <div className="button-row">
+            <button className="btn btn-primary" type="button" onClick={() => setTrack("award")}>
+              Add a TRI AI Saturdays Research Award project
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={() => setTrack("internal")}>
+              Add a TRI AI Internal Research project
+            </button>
+          </div>
         )}
       </div>
-      {adding ? (
+      {track ? (
         <form className="fields has-dismiss" onSubmit={(event) => void onCreate(event)}>
-          <CloseButton label="Close award form" className="btn-compact" onClick={() => setAdding(false)} />
+          <CloseButton label="Close project form" className="btn-compact" onClick={() => setTrack("")} />
           <div className="archive-head">
-            <h2><Mark name="award">Add a TRI AI Saturdays Research Award project</Mark></h2>
+            <h2>
+              <Mark name={track === "internal" ? "projects" : "award"}>
+                {track === "internal" ? "Add a TRI AI Internal Research project" : "Add a TRI AI Saturdays Research Award project"}
+              </Mark>
+            </h2>
           </div>
           <p className="quiet">Search for people already on the programme, or invite someone new.</p>
           <label>

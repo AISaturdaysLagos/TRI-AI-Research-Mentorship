@@ -69,6 +69,11 @@ service cloud.firestore {
         || (exists(/databases/$(database)/documents/researcherAwardProjects/$(request.auth.uid))
           && get(/databases/$(database)/documents/researcherAwardProjects/$(request.auth.uid)).data.projectId == projectId);
     }
+    function internalJoinOk(projectId) {
+      return resource.data.get('internalId', '') == ''
+        || (exists(/databases/$(database)/documents/researcherInternalProjects/$(request.auth.uid))
+          && get(/databases/$(database)/documents/researcherInternalProjects/$(request.auth.uid)).data.projectId == projectId);
+    }
     function joiningAward(awardId) {
       let addedIds = request.resource.data.recipientIds.removeAll(resource.data.get('recipientIds', []));
       let addedPeople = request.resource.data.recipients.removeAll(resource.data.get('recipients', []));
@@ -255,7 +260,7 @@ service cloud.firestore {
         || (signedIn()
           && addedSelf(id)
           && (
-            (role() == 'researcher' && addedPerson('researchers') && awardJoinOk(id))
+            (role() == 'researcher' && addedPerson('researchers') && awardJoinOk(id) && internalJoinOk(id))
             || (role() == 'senior_researcher' && addedPerson('seniorResearchers'))
           ))
         || driveLayoutUpdate(id)
@@ -433,7 +438,7 @@ service cloud.firestore {
         || (signedIn() && resource.data.guestEmail == request.auth.token.email);
       allow create: if isAdmin()
         && request.resource.data.keys().hasOnly([
-          'projectId', 'projectTitle', 'role', 'status', 'awardId', 'acceptedIds',
+          'projectId', 'projectTitle', 'role', 'status', 'awardId', 'internalId', 'acceptedIds',
           'guestName', 'guestEmail', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.projectId is string
@@ -446,6 +451,8 @@ service cloud.firestore {
         && request.resource.data.status == 'open'
         && request.resource.data.awardId is string
         && request.resource.data.awardId.size() < 120
+        && (!request.resource.data.keys().hasAny(['internalId'])
+          || (request.resource.data.internalId is string && request.resource.data.internalId.size() < 120))
         && request.resource.data.acceptedIds is list
         && request.resource.data.acceptedIds.size() == 0
         && request.resource.data.guestName is string
@@ -480,6 +487,20 @@ service cloud.firestore {
         && openInvite(request.resource.data.inviteToken, request.resource.data.projectId)
         && inviteData(request.resource.data.inviteToken).awardId is string
         && inviteData(request.resource.data.inviteToken).awardId.size() > 0;
+      allow update, delete: if isAdmin();
+    }
+
+    match /researcherInternalProjects/{uid} {
+      allow read: if self(uid) || isAdmin();
+      allow create: if self(uid)
+        && role() == 'researcher'
+        && request.resource.data.keys().hasOnly(['projectId', 'inviteToken'])
+        && request.resource.data.projectId is string
+        && request.resource.data.projectId.size() > 0
+        && request.resource.data.projectId.size() < 120
+        && openInvite(request.resource.data.inviteToken, request.resource.data.projectId)
+        && inviteData(request.resource.data.inviteToken).internalId is string
+        && inviteData(request.resource.data.inviteToken).internalId.size() > 0;
       allow update, delete: if isAdmin();
     }
 
@@ -846,9 +867,11 @@ service cloud.firestore {
     function awardProjectNeedsScoping(projectId) {
       return projectId.size() > 0
         && exists(/databases/$(database)/documents/projects/$(projectId))
-        && get(/databases/$(database)/documents/projects/$(projectId)).data.get('awardId', '') is string
-        && get(/databases/$(database)/documents/projects/$(projectId)).data.get('awardId', '').size() > 0
-        && get(/databases/$(database)/documents/projects/$(projectId)).data.status == 'scoping';
+        && get(/databases/$(database)/documents/projects/$(projectId)).data.status == 'scoping'
+        && ((get(/databases/$(database)/documents/projects/$(projectId)).data.get('awardId', '') is string
+            && get(/databases/$(database)/documents/projects/$(projectId)).data.get('awardId', '').size() > 0)
+          || (get(/databases/$(database)/documents/projects/$(projectId)).data.get('internalId', '') is string
+            && get(/databases/$(database)/documents/projects/$(projectId)).data.get('internalId', '').size() > 0));
     }
 
     function mayClaimScopingSlot(slotId) {
@@ -1192,7 +1215,7 @@ service cloud.firestore {
         && person.email.size() > 5
         && person.email.size() < 200
         && person.email.matches('.*@.*\\..*')
-        && (!person.keys().hasAny(['route']) || person.route == 'proposal' || person.route == 'award');
+        && (!person.keys().hasAny(['route']) || person.route == 'proposal' || person.route == 'award' || person.route == 'internal');
     }
 
     function onboardingGuests(list) {

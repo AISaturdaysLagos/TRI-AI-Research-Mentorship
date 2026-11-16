@@ -18,6 +18,7 @@ type ProjectRow = {
   health?: string;
   researchArea?: string;
   awardId?: string;
+  internalId?: string;
   proposalId?: string;
 };
 
@@ -81,7 +82,9 @@ export function AdminReportsPage() {
   const visibleProposals = proposals.filter((row) => route === "all" || proposalRoute(row) === route);
   const visibleProjects = projects.filter((row) => {
     if (route === "all") return true;
-    return route === "saturdays" ? Boolean(row.awardId) : !row.awardId;
+    if (route === "internal") return Boolean(row.internalId);
+    if (route === "saturdays") return Boolean(row.awardId);
+    return !row.awardId && !row.internalId;
   });
   const proposalCounts = countBy(visibleProposals.map((row) => row.status || "unspecified"));
   const projectCounts = countBy(visibleProjects.map((row) => row.status || "unspecified"));
@@ -102,6 +105,7 @@ export function AdminReportsPage() {
             { value: "all", label: "All routes" },
             { value: "direct", label: "Direct proposal" },
             { value: "saturdays", label: "TRI AI Saturdays Research Award" },
+            { value: "internal", label: "TRI AI Internal Research" },
           ]}
           value={route}
           onChange={setRoute}

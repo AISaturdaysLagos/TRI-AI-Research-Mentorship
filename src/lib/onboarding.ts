@@ -4,7 +4,7 @@ import { PROGRAMME_ZONE } from "./timezones";
 
 export type OnboardingAudience = "researcher" | "senior_researcher";
 
-export type ResearcherRoute = "proposal" | "award";
+export type ResearcherRoute = "proposal" | "award" | "internal";
 
 export type OnboardingGuest = { name: string; email: string; route?: ResearcherRoute };
 
@@ -36,7 +36,7 @@ function asGuests(value: unknown): OnboardingGuest[] {
     const name = typeof row.name === "string" ? row.name.trim() : "";
     const email = typeof row.email === "string" ? row.email.trim() : "";
     if (!name && !email) return [];
-    const route = row.route === "award" || row.route === "proposal" ? row.route : undefined;
+    const route = row.route === "award" || row.route === "proposal" || row.route === "internal" ? row.route : undefined;
     return [{ name, email, ...(route ? { route } : {}) }];
   });
 }
@@ -90,7 +90,7 @@ export async function saveOnboardingMeeting(input: {
       name: guest.name.trim(),
       email: guest.email.trim(),
     };
-    if (guest.route === "proposal" || guest.route === "award") row.route = guest.route;
+    if (guest.route === "proposal" || guest.route === "award" || guest.route === "internal") row.route = guest.route;
     return row;
   });
   const shared = {

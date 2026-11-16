@@ -16,6 +16,7 @@ export type WorkspaceProject = {
   scoped?: boolean;
   charterSigned?: boolean;
   awardId?: string;
+  internalId?: string;
   proposalId?: string;
   researchers?: { uid?: string; name?: string }[];
   seniorResearchers?: { uid?: string; name?: string }[];

@@ -23,7 +23,7 @@ export type MeetingResponseValue = "attending" | "not_attending" | "needs_anothe
 
 export const scopingNeedsMatch = "Introduce a Senior Researcher first.";
 export const scopingNeedsAwardProject =
-  "Choose a TRI AI Saturdays Research Award project that is still in scoping.";
+  "Choose a TRI AI Saturdays Research Award or TRI AI Internal Research project that is still in scoping.";
 
 export function meetingReplyPhrase(response: string | undefined) {
   if (response === "attending") return "can attend";
@@ -157,7 +157,7 @@ async function reserveScopingMeeting(
   const db = firestore();
   if (!db) throw new Error("This is unavailable right now.");
   const trimmed = slotId.trim();
-  if (!trimmed) throw new Error("Choose a proposal or a TRI AI Saturdays Research Award project.");
+  if (!trimmed) throw new Error("Choose a proposal, a TRI AI Saturdays Research Award project, or a TRI AI Internal Research project.");
   const slotRef = doc(db, "scopingSlots", trimmed);
   const meetingId = doc(collection(db, "meetings")).id;
   const slot = await getDoc(slotRef);
@@ -304,7 +304,8 @@ export async function saveMeeting(input: {
     } else if (input.projectId) {
       const project = await getDoc(doc(db, "projects", input.projectId));
       const data = project.data();
-      if (!project.exists() || !String(data?.awardId ?? "").trim() || data?.status !== "scoping") {
+      const invited = String(data?.awardId ?? "").trim() || String(data?.internalId ?? "").trim();
+      if (!project.exists() || !invited || data?.status !== "scoping") {
         throw new Error(scopingNeedsAwardProject);
       }
     } else {

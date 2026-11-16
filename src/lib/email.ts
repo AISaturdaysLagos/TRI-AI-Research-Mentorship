@@ -248,7 +248,7 @@ export function charterRequestEmail(input: { title: string; parties: EmailAddres
 
 export function researcherOnboardingEmail(input: {
   researcher: EmailAddress;
-  route: "proposal" | "award";
+  route: "proposal" | "award" | "internal";
   title: string;
   when: string;
   calendarLink: string;
@@ -263,20 +263,21 @@ export function researcherOnboardingEmail(input: {
   const profile = `${programmeUrl}#/account`;
   const proposal = `${programmeUrl}#/apply/researcher`;
   const award = input.route === "award";
+  const internal = input.route === "internal";
   const steps = [
     "How to join:",
     "1. Open that link.",
     "2. Choose Create an account, or Continue with Google.",
     "3. Choose Researcher.",
-    award
+    award || internal
       ? `4. Complete your profile: ${profile}`
       : `4. Complete your profile. You can save it before you submit a proposal: ${profile}`,
   ];
-  if (!award) steps.push(`5. When you are ready, start a proposal: ${proposal}`);
+  if (!award && !internal) steps.push(`5. When you are ready, start a proposal: ${proposal}`);
   return {
     to: [input.researcher],
     cc: [],
-    subject: award ? "Welcome to the TRI AI Research Mentorship Programme" : "Join the TRI AI Research Mentorship Programme",
+    subject: award || internal ? "Welcome to the TRI AI Research Mentorship Programme" : "Join the TRI AI Research Mentorship Programme",
     attachments: [],
     body: letter([
       hello([input.researcher]),
@@ -287,9 +288,16 @@ export function researcherOnboardingEmail(input: {
             "This platform is the home of your research mentorship. You will use it to create your Researcher profile, meet TRI AI at your onboarding meeting, and then carry the project with your Senior Researcher.",
             "You will be matched with a Senior Researcher, who will mentor your research. The Senior Researchers are already on this platform. You are joining as a Researcher on a TRI AI Saturdays Research Award.",
           ]
-        : [
-            "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher. You will submit a Direct Proposal for TRI AI to review.",
-          ]),
+        : internal
+          ? [
+              "It is a pleasure to welcome you to the TRI AI Research Mentorship Programme.",
+              "You are joining the TRI AI internal research team.",
+              "This platform is the home of your research mentorship. You will use it to create your Researcher profile, meet TRI AI at your onboarding meeting, and then carry the project with your Senior Researcher.",
+              "You will be matched with a Senior Researcher, who will mentor your research. The Senior Researchers are already on this platform. You are joining as a Researcher on TRI AI Internal Research.",
+            ]
+          : [
+              "TRI AI invites you to join the TRI AI Research Mentorship Programme as a Researcher. You will submit a Direct Proposal for TRI AI to review.",
+            ]),
       "Create your account on the live programme:",
       signup,
       ...steps,
@@ -365,21 +373,30 @@ export function projectJoinEmail(input: {
   role: "researcher" | "senior_researcher";
   link: string;
   award: boolean;
+  internal?: boolean;
   page?: string;
 }): EmailDraft {
   const senior = input.role === "senior_researcher";
   const place = senior ? "a Senior Researcher" : "a Researcher";
+  const subject = input.internal
+    ? `TRI AI Internal Research — ${input.title}`
+    : input.award
+      ? `TRI AI Saturdays Research Award — ${input.title}`
+      : `Join ${input.title}`;
+  const invitation = input.internal
+    ? `You are invited to join “${input.title}” as ${place} on TRI AI Internal Research.`
+    : input.award
+      ? `You are invited to join “${input.title}” as ${place} on a TRI AI Saturdays Research Award.`
+      : `You are invited to join “${input.title}” as ${place}.`;
   return {
     to: [input.person],
     cc: [],
-    subject: input.award ? `TRI AI Saturdays Research Award — ${input.title}` : `Join ${input.title}`,
+    subject,
     attachments: [],
     body: letter([
       hello([input.person]),
-      input.award
-        ? `You are invited to join “${input.title}” as ${place} on a TRI AI Saturdays Research Award.`
-        : `You are invited to join “${input.title}” as ${place}.`,
-      input.page ? `TRI AI Saturdays Research Award page: ${input.page}` : "",
+      invitation,
+      input.award && input.page ? `TRI AI Saturdays Research Award page: ${input.page}` : "",
       "Create an account, then join.",
       input.link,
     ]),

@@ -302,6 +302,7 @@ type ProjectChoice = {
   status?: string;
   proposalId?: string;
   awardId?: string;
+  internalId?: string;
   researchers?: { uid?: string; name?: string }[];
   seniorResearchers?: { uid?: string; name?: string }[];
 };
